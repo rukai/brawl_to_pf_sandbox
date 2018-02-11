@@ -1,0 +1,5 @@
+/data/
+!/data/brawl/fighter/source.txt
+!/data/projectm/fighter/source.txt
+/target
+**/*.rs.bk
