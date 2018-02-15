@@ -1,44 +1,32 @@
-use std::fs::File;
+use std::fs::{File, ReadDir};
 use std::fs;
 use std::io::Read;
 use std::str;
 
 extern crate byteorder;
+extern crate pf_sandbox;
 
 use byteorder::{BigEndian, ReadBytesExt};
+use pf_sandbox::package::Package;
+use pf_sandbox::fighter::Fighter;
 
 fn main() {
     match fs::read_dir("data/brawl/fighter") {
         Ok(fighter_dir) => {
-            for fighter_path in fighter_dir {
-                let fighter_path = fighter_path.unwrap();
-                if fighter_path.file_type().unwrap().is_dir() {
-                    let fighter_path = fighter_path.path();
+            let brawl_fighters = parse_fighters(fighter_dir);
+            println!("fighters: {:#?}", brawl_fighters);
 
-                    let folder_name = fighter_path.file_name().unwrap().to_str().unwrap().to_string();
-                    let mut cased_fighter_name: Option<String> = None; // TODO: Use this to determine the names of the other *.pac *.pcs files
-                    let mut moveset_name: Option<String> = None;
+            let mut package = Package::open_or_generate("brawl").unwrap();
+            package.fighters.clear();
 
-                    for data_path in fs::read_dir(&fighter_path).unwrap() {
-                        let data_path = data_path.unwrap().path();
-                        let data_name = data_path.file_name().unwrap().to_str().unwrap().to_string();
-                        if data_name.to_lowercase() == format!("Fit{}.pac", folder_name).to_lowercase() {
-                            cased_fighter_name = Some(String::from(data_name.trim_right_matches(".pac").trim_left_matches("Fit")));
-                            moveset_name = Some(data_name);
-                        }
-                    }
-
-                    println!("\n{:?}", folder_name);
-                    println!("{:?}", cased_fighter_name);
-
-                    // read
-                    if let Some(moveset_name) = moveset_name {
-                        let mut moveset_data: Vec<u8> = vec!();
-                        File::open(fighter_path.join(moveset_name)).unwrap().read_to_end(&mut moveset_data).unwrap();
-                        parse_arc(&moveset_data);
-                    }
-                }
+            for brawl_fighter in brawl_fighters {
+                let mut fighter = Fighter::default();
+                fighter.name = brawl_fighter.cased_fighter_name.clone();
+                package.fighters.push(brawl_fighter.cased_fighter_name, fighter);
             }
+
+            package.meta.title = String::from("Brawl");
+            package.save();
         }
         Err(_) => {
             println!("'data' directory incorrectly setup.");
@@ -46,18 +34,54 @@ fn main() {
     }
 }
 
-fn parse_arc(data: &[u8]) {
+fn parse_fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
+    let mut fighters = vec!();
+    for fighter_path in fighter_dir {
+        let fighter_path = fighter_path.unwrap();
+        if fighter_path.file_type().unwrap().is_dir() {
+            let fighter_path = fighter_path.path();
+
+            let folder_name = fighter_path.file_name().unwrap().to_str().unwrap().to_string();
+            let mut cased_fighter_name: Option<String> = None; // TODO: Use this to determine the names of the other *.pac *.pcs files
+            let mut moveset_name: Option<String> = None;
+
+            for data_path in fs::read_dir(&fighter_path).unwrap() {
+                let data_path = data_path.unwrap().path();
+                let data_name = data_path.file_name().unwrap().to_str().unwrap().to_string();
+                if data_name.to_lowercase() == format!("Fit{}.pac", folder_name).to_lowercase() {
+                    cased_fighter_name = Some(String::from(data_name.trim_right_matches(".pac").trim_left_matches("Fit")));
+                    moveset_name = Some(data_name);
+                }
+            }
+
+            // read
+            if let Some(moveset_name) = moveset_name {
+                let mut moveset_data: Vec<u8> = vec!();
+                File::open(fighter_path.join(moveset_name)).unwrap().read_to_end(&mut moveset_data).unwrap();
+                let fighter = BrawlFighter {
+                    folder_name,
+                    cased_fighter_name: cased_fighter_name.unwrap(),
+                    arc_header: parse_arc(&moveset_data),
+                };
+                fighters.push(fighter);
+            }
+        }
+    }
+    fighters
+}
+
+fn parse_arc(data: &[u8]) -> ArcHeader {
     //read the main header
     let num_sub_headers = (&data[6..8]).read_u16::<BigEndian>().unwrap();
 
     // read the sub headers
+    let mut sub_headers = vec!();
     let mut header_index = ARC_MAIN_HEADER_SIZE;
     for i in 0..num_sub_headers {
-        let sub_header = ArcSubHeader::new(&data[header_index ..]);
-        println!("sub_header: {:?}", sub_header);
+        let mut sub_header = ArcSubHeader::new(&data[header_index ..]);
 
         if i == 0 {
-            parse_arc_sakurai(&data[header_index + ARC_SUB_HEADER_SIZE ..]);
+            sub_header.data = Some(parse_arc_sakurai(&data[header_index + ARC_SUB_HEADER_SIZE ..]));
         }
 
         header_index += ARC_SUB_HEADER_SIZE + sub_header.size as usize;
@@ -67,12 +91,14 @@ fn parse_arc(data: &[u8]) {
         if offset != 0 {
             header_index += ARC_SUB_HEADER_SIZE - offset;
         }
+        sub_headers.push(sub_header);
     }
+
+    ArcHeader { sub_headers }
 }
 
-fn parse_arc_sakurai(data: &[u8]) {
-    let header = ArcSakuraiHeader::new(data);
-    println!("sakurai_header: {:?}", header);
+fn parse_arc_sakurai(data: &[u8]) -> ArcSakuraiHeader {
+    let mut header = ArcSakuraiHeader::new(data);
 
     let lookup_entries_index = ARC_SAKURAI_HEADER_SIZE + header.lookup_offset as usize;
     let sections_index = lookup_entries_index + header.lookup_entry_count as usize * 4;
@@ -80,21 +106,20 @@ fn parse_arc_sakurai(data: &[u8]) {
     let string_table_index = external_subroutines_index + header.external_subroutine_count as usize * 8;
 
     for i in 0..header.section_count {
-        let section_header = ArcSakuraiSectionHeader::new(&data[sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE ..]);
+        let mut section = ArcSakuraiSection::new(&data[sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE ..]);
 
-        let section_name_index = string_table_index + section_header.string_offset as usize;
+        let section_name_index = string_table_index + section.string_offset as usize;
         let section_name_length = &data[section_name_index..].iter().position(|x| *x == 0).unwrap();
-        let section_name = str::from_utf8(&data[section_name_index .. section_name_index + section_name_length]).unwrap();
+        section.name = String::from(str::from_utf8(&data[section_name_index .. section_name_index + section_name_length]).unwrap());
 
-        println!("section: {:?}", section_name);
-        if section_name == "data" {
-            let fighter_data_header = ArcFighterDataHeader::new(&data[ARC_SAKURAI_HEADER_SIZE + section_header.data_offset as usize ..]);
-            println!("fighter_data_header: {:?}", fighter_data_header);
-
-            let attributes = &FighterAttributes::new(&data[ARC_SAKURAI_HEADER_SIZE + fighter_data_header.attribute_start as usize ..]);
-            println!("attributes: {:?}", attributes);
+        if &section.name == "data" {
+            let header = ArcFighterDataHeader::new(&data[ARC_SAKURAI_HEADER_SIZE + section.data_offset as usize ..]);
+            let attributes = FighterAttributes::new(&data[ARC_SAKURAI_HEADER_SIZE + header.attribute_start as usize ..]);
+            section.data = SectionData::FighterData { header, attributes };
         }
+        header.sections.push(section);
     }
+    header
 }
 
 // TODO:
@@ -102,8 +127,20 @@ fn parse_arc_sakurai(data: &[u8]) {
 // To do that:
 // *   add a vec to each struct to store their children
 // *   delete the new() methods for each struct, put that logic in the parse functions
+// *   maybe fix the mut struct fix up later pattern
+
+#[derive(Debug)]
+struct BrawlFighter {
+    cased_fighter_name: String,
+    folder_name: String,
+    arc_header: ArcHeader,
+}
 
 const ARC_MAIN_HEADER_SIZE: usize = 0x40;
+#[derive(Debug)]
+struct ArcHeader {
+    sub_headers: Vec<ArcSubHeader>,
+}
 
 const ARC_SUB_HEADER_SIZE: usize = 0x20;
 #[derive(Debug)]
@@ -112,7 +149,8 @@ struct ArcSubHeader {
     index: i16,
     size: i32,
     group_index: u8,
-    redirect_index: i16 // The index of a different file to read
+    redirect_index: i16, // The index of a different file to read
+    data: Option<ArcSakuraiHeader>, // TODO: make this a custom enum
 }
 
 impl ArcSubHeader {
@@ -123,6 +161,7 @@ impl ArcSubHeader {
             size:           (&data[4..8]).read_i32::<BigEndian>().unwrap(),
             group_index:    data[8],
             redirect_index: (&data[9..11]).read_i16::<BigEndian>().unwrap(),
+            data:           None,
         }
     }
 }
@@ -135,6 +174,7 @@ struct ArcSakuraiHeader {
     lookup_entry_count: i32,
     section_count: i32,
     external_subroutine_count: i32,
+    sections: Vec<ArcSakuraiSection>,
 }
 
 impl ArcSakuraiHeader {
@@ -145,24 +185,35 @@ impl ArcSakuraiHeader {
             lookup_entry_count:        (&data[8..12]).read_i32::<BigEndian>().unwrap(),
             section_count:             (&data[12..16]).read_i32::<BigEndian>().unwrap(),
             external_subroutine_count: (&data[16..20]).read_i32::<BigEndian>().unwrap(),
+            sections:                  vec!(),
         }
     }
 }
 
 const ARC_SAKURAI_SECTION_HEADER_SIZE: usize = 0x8;
 #[derive(Debug)]
-struct ArcSakuraiSectionHeader {
+struct ArcSakuraiSection {
     data_offset: i32,
     string_offset: i32,
+    name: String,
+    data: SectionData,
 }
 
-impl ArcSakuraiSectionHeader {
-    pub fn new(data: &[u8]) -> ArcSakuraiSectionHeader {
-        ArcSakuraiSectionHeader {
+impl ArcSakuraiSection {
+    pub fn new(data: &[u8]) -> ArcSakuraiSection {
+        ArcSakuraiSection {
             data_offset:   (&data[0..4]).read_i32::<BigEndian>().unwrap(),
             string_offset: (&data[4..8]).read_i32::<BigEndian>().unwrap(),
+            name:          String::from(""),
+            data:          SectionData::None,
         }
     }
+}
+
+#[derive(Debug)]
+enum SectionData {
+    FighterData { header: ArcFighterDataHeader, attributes: FighterAttributes },
+    None,
 }
 
 const _ARC_FIGHTER_DATA_HEADER_SIZE: usize = 0x7c;
@@ -245,6 +296,14 @@ struct FighterAttributes {
     jump_squat_frames: i32,
     jump_x_init_vel: f32,
     jump_y_init_vel: f32,
+    jump_x_vel_ground_mult: f32,
+    jump_x_init_term_vel: f32, // TODO: does melee include this max in name?
+    jump_y_init_vel_short: f32,
+    air_jump_x_mult: f32,
+    air_jump_y_mult: f32,
+    footstool_init_vel: f32,
+    footstool_init_vel_short: f32,
+    meteor_cancel_delay: f32,
 }
 
 impl FighterAttributes {
@@ -264,6 +323,14 @@ impl FighterAttributes {
             jump_squat_frames:        (&data[0x30..0x34]).read_i32::<BigEndian>().unwrap(),
             jump_x_init_vel:          (&data[0x34..0x38]).read_f32::<BigEndian>().unwrap(),
             jump_y_init_vel:          (&data[0x38..0x3c]).read_f32::<BigEndian>().unwrap(),
+            jump_x_vel_ground_mult:   (&data[0x3c..0x40]).read_f32::<BigEndian>().unwrap(),
+            jump_x_init_term_vel:     (&data[0x40..0x44]).read_f32::<BigEndian>().unwrap(),
+            jump_y_init_vel_short:    (&data[0x44..0x48]).read_f32::<BigEndian>().unwrap(),
+            air_jump_x_mult:          (&data[0x48..0x4c]).read_f32::<BigEndian>().unwrap(),
+            air_jump_y_mult:          (&data[0x4c..0x50]).read_f32::<BigEndian>().unwrap(),
+            footstool_init_vel:       (&data[0x50..0x54]).read_f32::<BigEndian>().unwrap(),
+            footstool_init_vel_short: (&data[0x54..0x58]).read_f32::<BigEndian>().unwrap(),
+            meteor_cancel_delay:      (&data[0x5c..0x60]).read_f32::<BigEndian>().unwrap(),
         }
     }
 }

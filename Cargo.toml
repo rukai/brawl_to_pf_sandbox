@@ -5,3 +5,11 @@ authors = ["Rukai <rubickent@gmail.com>"]
 
 [dependencies]
 byteorder = "1"
+pf_sandbox = { path = "/home/rubic/Projects/Smash/pf_sandbox/pf_sandbox/pf_sandbox" }
+
+[patch.crates-io]
+gilrs = { git = "https://gitlab.com/rukai/gilrs", branch = "pf_sandbox2" }
+vulkano = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
+vulkano-win = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
+vulkano-shader-derive = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
+vulkano_text = { git = "https://github.com/rukai/vulkano-text", branch = "pf_sandbox2" }
