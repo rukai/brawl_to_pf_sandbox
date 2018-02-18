@@ -1,9 +1,11 @@
 use std::fs::{File, ReadDir};
 use std::fs;
 use std::io::Read;
-use std::str;
 
 use byteorder::{BigEndian, ReadBytesExt};
+
+use bres::*;
+use util;
 
 pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
     let mut fighters = vec!();
@@ -52,7 +54,7 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
 fn arc(data: &[u8]) -> Arc {
     //read the main header
     let num_sub_headers = (&data[6..8]).read_u16::<BigEndian>().unwrap();
-    let name = String::from(parse_str(&data[0x10..]).unwrap());
+    let name = String::from(util::parse_str(&data[0x10..]).unwrap());
 
     // read the sub headers
     let mut children = vec!();
@@ -71,10 +73,11 @@ fn arc(data: &[u8]) -> Arc {
                 }
             }
 
+            let child_data = &data[header_index + ARC_CHILD_HEADER_SIZE ..];
             arc_child.data = match tag.as_ref() {
-                "ARC"  => ArcChildData::Arc(arc(&data[header_index + ARC_CHILD_HEADER_SIZE ..])),
+                "ARC"  => ArcChildData::Arc(arc(&child_data)),
                 "EFLS" => ArcChildData::Efls,
-                "bres" => ArcChildData::Bres,
+                "bres" => ArcChildData::Bres(bres(&child_data)),
                 "ATKD" => ArcChildData::Atkd,
                 "REFF" => ArcChildData::Reff,
                 "REFT" => ArcChildData::Reft,
@@ -108,7 +111,7 @@ fn arc_sakurai(data: &[u8]) -> ArcSakurai {
 
     for i in 0..header.section_count {
         let mut section = ArcSakuraiSection::new(&data[sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE ..]);
-        section.name = String::from(parse_str(&data[string_table_index + section.string_offset as usize ..]).unwrap());
+        section.name = String::from(util::parse_str(&data[string_table_index + section.string_offset as usize ..]).unwrap());
 
         if &section.name == "data" {
             let header = ArcFighterData::new(&data[ARC_SAKURAI_HEADER_SIZE + section.data_offset as usize ..]);
@@ -128,8 +131,8 @@ pub struct BrawlFighter {
     pub motion: Arc,
 }
 
-// Arc is the name used by brawlbox for archive not to be confused with an atomic reference count
 const ARC_HEADER_SIZE: usize = 0x40;
+/// Arc is for archive not to be confused with an atomic reference count
 #[derive(Debug)]
 pub struct Arc {
     pub name: String,
@@ -165,7 +168,7 @@ pub enum ArcChildData {
     Arc (Arc),
     Sakurai (ArcSakurai),
     Efls,
-    Bres,
+    Bres (Bres),
     Atkd,
     Reff,
     Reft,
@@ -442,14 +445,5 @@ impl FighterAttributes {
             hip_n_bone2:                       (&data[0x1cc..0x1d0]).read_u32::<BigEndian>().unwrap(),
             x_rot_n_bone:                      (&data[0x1e0..0x1e4]).read_u32::<BigEndian>().unwrap(),
         }
-    }
-}
-
-fn parse_str(data: &[u8]) -> Result<&str, String> {
-    if let Some(length) = data.iter().position(|x| *x == 0) {
-        str::from_utf8(&data[..length]).map_err(|x| format!("{}", x))
-    }
-    else {
-        Err(String::from("String was not terminated"))
     }
 }

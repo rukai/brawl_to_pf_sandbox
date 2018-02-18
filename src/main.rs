@@ -2,19 +2,29 @@ extern crate pf_sandbox;
 extern crate byteorder;
 
 use std::fs;
+use std::env;
 
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
 
 pub mod parse;
+pub mod bres;
+pub mod util;
 
 use parse::{SectionData, ArcChildData};
 
 fn main() {
+    let mut args = env::args();
+    args.next();
+    let arg = args.next().unwrap_or(String::from(""));
+
     match fs::read_dir("data/brawl/fighter") {
         Ok(fighter_dir) => {
             let brawl_fighters = parse::fighters(fighter_dir);
-            println!("fighters: {:#?}", brawl_fighters);
+            if arg == "printonly" {
+                println!("{:#?}", brawl_fighters);
+                return;
+            }
 
             let mut package = Package::open_or_generate("brawl").unwrap();
             package.fighters.clear();
