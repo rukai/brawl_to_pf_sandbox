@@ -13,28 +13,36 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
             let fighter_path = fighter_path.path();
 
             let folder_name = fighter_path.file_name().unwrap().to_str().unwrap().to_string();
-            let mut cased_fighter_name: Option<String> = None; // TODO: Use this to determine the names of the other *.pac *.pcs files
-            let mut moveset_name: Option<String> = None;
+            let mut cased_fighter_name: Option<String> = None;
 
             for data_path in fs::read_dir(&fighter_path).unwrap() {
                 let data_path = data_path.unwrap().path();
                 let data_name = data_path.file_name().unwrap().to_str().unwrap().to_string();
                 if data_name.to_lowercase() == format!("Fit{}.pac", folder_name).to_lowercase() {
                     cased_fighter_name = Some(String::from(data_name.trim_right_matches(".pac").trim_left_matches("Fit")));
-                    moveset_name = Some(data_name);
                 }
             }
 
             // read
-            if let Some(moveset_name) = moveset_name {
-                let mut moveset_data: Vec<u8> = vec!();
-                File::open(fighter_path.join(moveset_name)).unwrap().read_to_end(&mut moveset_data).unwrap();
-                let fighter = BrawlFighter {
-                    folder_name,
-                    cased_fighter_name: cased_fighter_name.unwrap(),
-                    arc: arc(&moveset_data),
-                };
-                fighters.push(fighter);
+            if let Some(cased_fighter_name) = cased_fighter_name {
+                let mut moveset_file = File::open(fighter_path.join(format!("Fit{}.pac", cased_fighter_name)));
+                let mut motion_file = File::open(fighter_path.join(format!("Fit{}MotionEtc.pac", cased_fighter_name)));
+
+                if let (Ok(mut moveset_file), Ok(mut motion_file)) = (moveset_file, motion_file) {
+                    let mut moveset_data: Vec<u8> = vec!();
+                    moveset_file.read_to_end(&mut moveset_data).unwrap();
+
+                    let mut motion_data: Vec<u8> = vec!();
+                    motion_file.read_to_end(&mut motion_data).unwrap();
+
+                    let fighter = BrawlFighter {
+                        folder_name,
+                        cased_fighter_name: cased_fighter_name,
+                        moveset: arc(&moveset_data),
+                        motion: arc(&motion_data),
+                    };
+                    fighters.push(fighter);
+                }
             }
         }
     }
@@ -44,28 +52,50 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
 fn arc(data: &[u8]) -> Arc {
     //read the main header
     let num_sub_headers = (&data[6..8]).read_u16::<BigEndian>().unwrap();
+    let name = String::from(parse_str(&data[0x10..]).unwrap());
 
     // read the sub headers
-    let mut sub_arc = vec!();
-    let mut header_index = ARC_MAIN_HEADER_SIZE;
+    let mut children = vec!();
+    let mut header_index = ARC_HEADER_SIZE;
     for i in 0..num_sub_headers {
-        let mut sub_header = SubArc::new(&data[header_index ..]);
+        let mut arc_child = ArcChild::new(&data[header_index ..]);
+        if arc_child.redirect_index == 0xFF {
+            let mut tag = String::new();
+            for j in 0..4 {
+                let byte = data[header_index + ARC_CHILD_HEADER_SIZE + j] as char;
+                if byte.is_ascii_alphabetic() {
+                    tag.push(byte);
+                }
+                else {
+                    break;
+                }
+            }
 
-        if i == 0 {
-            sub_header.data = Some(arc_sakurai(&data[header_index + SUB_ARC_HEADER_SIZE ..]));
+            arc_child.data = match tag.as_ref() {
+                "ARC"  => ArcChildData::Arc(arc(&data[header_index + ARC_CHILD_HEADER_SIZE ..])),
+                "EFLS" => ArcChildData::Efls,
+                "bres" => ArcChildData::Bres,
+                "ATKD" => ArcChildData::Atkd,
+                "REFF" => ArcChildData::Reff,
+                "REFT" => ArcChildData::Reft,
+                "AIPD" => ArcChildData::Aipd,
+                "W"    => ArcChildData::W,
+                "" if i == 0 => ArcChildData::Sakurai(arc_sakurai(&data[header_index + ARC_CHILD_HEADER_SIZE ..])),
+                _ => ArcChildData::Unknown
+            };
+
+            header_index += ARC_CHILD_HEADER_SIZE + arc_child.size as usize;
+
+            // align to the next ARC_CHILD_HEADER_SIZE
+            let offset = header_index % ARC_CHILD_HEADER_SIZE;
+            if offset != 0 {
+                header_index += ARC_CHILD_HEADER_SIZE - offset;
+            }
+            children.push(arc_child);
         }
-
-        header_index += SUB_ARC_HEADER_SIZE + sub_header.size as usize;
-
-        // align to the next SUB_ARC_HEADER_SIZE
-        let offset = header_index % SUB_ARC_HEADER_SIZE;
-        if offset != 0 {
-            header_index += SUB_ARC_HEADER_SIZE - offset;
-        }
-        sub_arc.push(sub_header);
     }
 
-    Arc { sub_arc }
+    Arc { name, children }
 }
 
 fn arc_sakurai(data: &[u8]) -> ArcSakurai {
@@ -78,10 +108,7 @@ fn arc_sakurai(data: &[u8]) -> ArcSakurai {
 
     for i in 0..header.section_count {
         let mut section = ArcSakuraiSection::new(&data[sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE ..]);
-
-        let section_name_index = string_table_index + section.string_offset as usize;
-        let section_name_length = &data[section_name_index..].iter().position(|x| *x == 0).unwrap();
-        section.name = String::from(str::from_utf8(&data[section_name_index .. section_name_index + section_name_length]).unwrap());
+        section.name = String::from(parse_str(&data[string_table_index + section.string_offset as usize ..]).unwrap());
 
         if &section.name == "data" {
             let header = ArcFighterData::new(&data[ARC_SAKURAI_HEADER_SIZE + section.data_offset as usize ..]);
@@ -93,48 +120,58 @@ fn arc_sakurai(data: &[u8]) -> ArcSakurai {
     header
 }
 
-// TODO:
-// I might want to store the below structs for later retrieval instead of immediately processing
-// To do that:
-// *   add a vec to each struct to store their children
-// *   delete the new() methods for each struct, put that logic in the parse functions
-// *   maybe fix the mut struct fix up later pattern
-
 #[derive(Debug)]
 pub struct BrawlFighter {
     pub cased_fighter_name: String,
         folder_name: String,
-    pub arc: Arc,
+    pub moveset: Arc,
+    pub motion: Arc,
 }
 
-const ARC_MAIN_HEADER_SIZE: usize = 0x40;
+// Arc is the name used by brawlbox for archive not to be confused with an atomic reference count
+const ARC_HEADER_SIZE: usize = 0x40;
 #[derive(Debug)]
 pub struct Arc {
-    pub sub_arc: Vec<SubArc>,
+    pub name: String,
+    pub children: Vec<ArcChild>,
 }
 
-const SUB_ARC_HEADER_SIZE: usize = 0x20;
+const ARC_CHILD_HEADER_SIZE: usize = 0x20;
 #[derive(Debug)]
-pub struct SubArc {
+pub struct ArcChild {
     ty: i16,
     index: i16,
     size: i32,
     group_index: u8,
     redirect_index: i16, // The index of a different file to read
-    pub data: Option<ArcSakurai>, // TODO: make this a custom enum
+    pub data: ArcChildData, // TODO: delete box
 }
 
-impl SubArc {
-    pub fn new(data: &[u8]) -> SubArc {
-        SubArc {
+impl ArcChild {
+    pub fn new(data: &[u8]) -> ArcChild {
+        ArcChild {
             ty:             (&data[0..2]).read_i16::<BigEndian>().unwrap(),
             index:          (&data[2..4]).read_i16::<BigEndian>().unwrap(),
             size:           (&data[4..8]).read_i32::<BigEndian>().unwrap(),
             group_index:    data[8],
             redirect_index: (&data[9..11]).read_i16::<BigEndian>().unwrap(),
-            data:           None,
+            data:           ArcChildData::Unknown,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum ArcChildData {
+    Arc (Arc),
+    Sakurai (ArcSakurai),
+    Efls,
+    Bres,
+    Atkd,
+    Reff,
+    Reft,
+    Aipd,
+    W,
+    Unknown
 }
 
 const ARC_SAKURAI_HEADER_SIZE: usize = 0x20;
@@ -286,7 +323,7 @@ pub struct FighterAttributes {
     pub air_friction_x: f32,
     pub fastfall_velocity: f32,
     pub air_x_term_vel: f32,
-    pub glide_frame_window: f32,
+    pub glide_frame_window: u32,
     pub jab2_window: f32,
     pub jab3_window: f32,
     pub ftilt2_window: f32,
@@ -336,8 +373,8 @@ impl FighterAttributes {
             walk_max_vel:                      (&data[0x08..0x0c]).read_f32::<BigEndian>().unwrap(),
             ground_friction:                   (&data[0x0c..0x10]).read_f32::<BigEndian>().unwrap(),
             dash_init_vel:                     (&data[0x10..0x14]).read_f32::<BigEndian>().unwrap(),
-            dash_run_acc_a:                  (&data[0x14..0x18]).read_f32::<BigEndian>().unwrap(),
-            dash_run_acc_b:                  (&data[0x18..0x1c]).read_f32::<BigEndian>().unwrap(),
+            dash_run_acc_a:                    (&data[0x14..0x18]).read_f32::<BigEndian>().unwrap(),
+            dash_run_acc_b:                    (&data[0x18..0x1c]).read_f32::<BigEndian>().unwrap(),
             dash_run_term_vel:                 (&data[0x1c..0x20]).read_f32::<BigEndian>().unwrap(),
             grounded_max_x_vel:                (&data[0x24..0x28]).read_f32::<BigEndian>().unwrap(),
             dash_cancel_frame_window:          (&data[0x28..0x2c]).read_i32::<BigEndian>().unwrap(),
@@ -364,7 +401,7 @@ impl FighterAttributes {
             air_friction_x:                    (&data[0x80..0x84]).read_f32::<BigEndian>().unwrap(),
             fastfall_velocity:                 (&data[0x84..0x88]).read_f32::<BigEndian>().unwrap(),
             air_x_term_vel:                    (&data[0x88..0x8c]).read_f32::<BigEndian>().unwrap(),
-            glide_frame_window:                (&data[0x8c..0x90]).read_f32::<BigEndian>().unwrap(),
+            glide_frame_window:                (&data[0x8c..0x90]).read_u32::<BigEndian>().unwrap(),
             jab2_window:                       (&data[0x94..0x98]).read_f32::<BigEndian>().unwrap(),
             jab3_window:                       (&data[0x98..0x9c]).read_f32::<BigEndian>().unwrap(),
             ftilt2_window:                     (&data[0x9c..0xa0]).read_f32::<BigEndian>().unwrap(),
@@ -405,5 +442,14 @@ impl FighterAttributes {
             hip_n_bone2:                       (&data[0x1cc..0x1d0]).read_u32::<BigEndian>().unwrap(),
             x_rot_n_bone:                      (&data[0x1e0..0x1e4]).read_u32::<BigEndian>().unwrap(),
         }
+    }
+}
+
+fn parse_str(data: &[u8]) -> Result<&str, String> {
+    if let Some(length) = data.iter().position(|x| *x == 0) {
+        str::from_utf8(&data[..length]).map_err(|x| format!("{}", x))
+    }
+    else {
+        Err(String::from("String was not terminated"))
     }
 }

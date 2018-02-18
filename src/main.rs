@@ -8,7 +8,7 @@ use pf_sandbox::fighter::*;
 
 pub mod parse;
 
-use parse::SectionData;
+use parse::{SectionData, ArcChildData};
 
 fn main() {
     match fs::read_dir("data/brawl/fighter") {
@@ -23,8 +23,8 @@ fn main() {
                 let mut fighter = Fighter::default();
                 fighter.name = brawl_fighter.cased_fighter_name.clone();
 
-                for sub_arc in brawl_fighter.arc.sub_arc {
-                    if let Some(data) = sub_arc.data {
+                for sub_arc in brawl_fighter.moveset.children {
+                    if let ArcChildData::Sakurai(data) = sub_arc.data {
                         for section in data.sections {
                             if let SectionData::FighterData { attributes, .. } = section.data {
                                 fighter.air_jumps = attributes.num_jumps as u64 - 1;
