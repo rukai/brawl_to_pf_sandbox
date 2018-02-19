@@ -27,6 +27,7 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
 
             // read
             if let Some(cased_fighter_name) = cased_fighter_name {
+                println!("name: {}", cased_fighter_name);
                 let mut moveset_file = File::open(fighter_path.join(format!("Fit{}.pac", cased_fighter_name)));
                 let mut motion_file = File::open(fighter_path.join(format!("Fit{}MotionEtc.pac", cased_fighter_name)));
 
@@ -62,17 +63,7 @@ fn arc(data: &[u8]) -> Arc {
     for i in 0..num_sub_headers {
         let mut arc_child = ArcChild::new(&data[header_index ..]);
         if arc_child.redirect_index == 0xFF {
-            let mut tag = String::new();
-            for j in 0..4 {
-                let byte = data[header_index + ARC_CHILD_HEADER_SIZE + j] as char;
-                if byte.is_ascii_alphabetic() {
-                    tag.push(byte);
-                }
-                else {
-                    break;
-                }
-            }
-
+            let tag = util::parse_tag(&data[header_index + ARC_CHILD_HEADER_SIZE .. ]);
             let child_data = &data[header_index + ARC_CHILD_HEADER_SIZE ..];
             arc_child.data = match tag.as_ref() {
                 "ARC"  => ArcChildData::Arc(arc(&child_data)),
