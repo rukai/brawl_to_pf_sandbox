@@ -27,7 +27,7 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
 
             // read
             if let Some(cased_fighter_name) = cased_fighter_name {
-                println!("name: {}", cased_fighter_name);
+                //println!("name: {}", cased_fighter_name);
                 let mut moveset_file = File::open(fighter_path.join(format!("Fit{}.pac", cased_fighter_name)));
                 let mut motion_file = File::open(fighter_path.join(format!("Fit{}MotionEtc.pac", cased_fighter_name)));
 

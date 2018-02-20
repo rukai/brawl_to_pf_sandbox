@@ -10,6 +10,7 @@ use pf_sandbox::fighter::*;
 pub mod parse;
 pub mod bres;
 pub mod util;
+pub mod resources;
 
 use parse::{SectionData, ArcChildData, Arc};
 
@@ -24,6 +25,13 @@ fn main() {
 
             let mut package = Package::open_or_generate("brawl").unwrap();
             package.fighters.clear();
+
+            for brawl_fighter in brawl_fighters.iter() {
+                if brawl_fighter.cased_fighter_name == arg {
+                    println!("{:#?}", brawl_fighter);
+                    return;
+                }
+            }
 
             for brawl_fighter in brawl_fighters {
                 let mut fighter = Fighter::default();
@@ -98,9 +106,7 @@ fn main() {
                     }
                 }
 
-                if brawl_fighter.cased_fighter_name == arg {
-                    process_motion(&brawl_fighter.motion);
-                }
+                process_motion(&brawl_fighter.motion);
 
                 for action in fighter.actions.iter_mut() {
                     for frame in action.frames.iter_mut() {
@@ -115,10 +121,8 @@ fn main() {
                 package.fighters.push(brawl_fighter.cased_fighter_name, fighter);
             }
 
-            if arg == "" {
-                package.meta.title = String::from("Brawl");
-                package.save();
-            }
+            package.meta.title = String::from("Brawl");
+            package.save();
         }
         Err(_) => {
             println!("'data' directory incorrectly setup.");
@@ -132,7 +136,6 @@ fn main() {
                     process_motion(arc);
                 }
                 &ArcChildData::Bres (ref bres) => {
-                    println!("{:#?}", bres);
                 }
                 _ => { }
             }

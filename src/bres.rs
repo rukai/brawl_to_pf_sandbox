@@ -1,55 +1,34 @@
 use byteorder::{BigEndian, ReadBytesExt};
 
 use util;
+use resources;
 
 pub(crate) fn bres(data: &[u8]) -> Bres {
     let root_offset = (&data[0xc..0xe]).read_u16::<BigEndian>().unwrap();
     bres_group(&data[root_offset as usize ..])
 }
 
-// TODO: Pull ResourceGroup + ResourceEntries into their own struct, then store that struct in Bres and Chr0
-//Resource {
-//    string_offset
-//    string
-//    data_offset
-//}
-
 fn bres_group(data: &[u8]) -> Bres {
-    let total_size = (&data[0x8 ..]).read_i32::<BigEndian>().unwrap();
-    let num_children = (&data[0xc ..]).read_i32::<BigEndian>().unwrap();
-
     let mut children = vec!();
-    for i in 1..num_children+1 { // the first child is a dummy so we skip it.
-        let child_index = 0x10 + BRES_CHILD_SIZE * i as usize;
-
-        let string_offset = (&data[child_index as usize + 8 .. ]).read_i32::<BigEndian>().unwrap();
-        let string_data = &data[ROOT_SIZE + string_offset as usize .. ];
-        let name = String::from(util::parse_str(string_data).unwrap());
-
-        let data_offset = (&data[child_index as usize + 0xc .. ]).read_i32::<BigEndian>().unwrap();
-        let child_data = &data[ROOT_SIZE + data_offset as usize .. ];
+    for resource in resources::resources(&data[ROOT_SIZE..]) {
+        let child_data = &data[ROOT_SIZE + resource.data_offset as usize .. ];
 
         let tag = util::parse_tag(child_data);
         let child_data = match tag.as_ref() {
             "CHR0" => BresChildData::Chr0 (chr0(child_data)),
-            "" => BresChildData::Bres (Box::new(bres_group(&data[data_offset as usize ..]))),
+            "" => BresChildData::Bres (Box::new(bres_group(&data[resource.data_offset as usize ..]))),
             _  => BresChildData::Unknown (tag),
         };
 
         children.push(BresChild {
-            id:          (&data[child_index as usize       .. ]).read_u16::<BigEndian>().unwrap(),
-            flag:        (&data[child_index as usize + 0x2 .. ]).read_u16::<BigEndian>().unwrap(),
-            left_index:  (&data[child_index as usize + 0x4 .. ]).read_u16::<BigEndian>().unwrap(),
-            right_index: (&data[child_index as usize + 0x6 .. ]).read_u16::<BigEndian>().unwrap(),
-            string_offset,
-            data_offset,
-            data: child_data,
-            name,
+            string_offset: resource.string_offset,
+            data_offset:   resource.data_offset,
+            name:          resource.string,
+            data:          child_data,
         });
     }
 
     Bres {
-        total_size,
         children
     }
 }
@@ -58,7 +37,7 @@ fn chr0(data: &[u8]) -> Chr0 {
     let size             = (&data[0x4..]).read_i32::<BigEndian>().unwrap();
     let version          = (&data[0x8..]).read_i32::<BigEndian>().unwrap();
     let bres_offset      = (&data[0xc..]).read_i32::<BigEndian>().unwrap();
-    let group_offset     = (&data[0x10..]).read_i32::<BigEndian>().unwrap();
+    let resources_offset = (&data[0x10..]).read_i32::<BigEndian>().unwrap();
     let string_offset    = (&data[0x14..]).read_i32::<BigEndian>().unwrap();
     let orig_path_offset = (&data[0x18..]).read_i32::<BigEndian>().unwrap();
     let num_frames       = (&data[0x1c..]).read_u16::<BigEndian>().unwrap();
@@ -68,24 +47,14 @@ fn chr0(data: &[u8]) -> Chr0 {
     assert_eq!(version, 4);
 
     let name = String::from(util::parse_str(&data[string_offset as usize ..]).unwrap());
-    let _group_total_size = (&data[group_offset as usize ..]).read_i32::<BigEndian>().unwrap();
-    let group_num_children = (&data[group_offset as usize + 4 ..]).read_i32::<BigEndian>().unwrap();
 
     let mut children = vec!();
-    for i in 1..group_num_children+1 { // the first child is a dummy so we skip it.
-        let child_index = group_offset as usize + BRES_GROUP_SIZE + BRES_CHILD_SIZE * i as usize;
-
-        let string_offset = (&data[child_index + 8 .. ]).read_i32::<BigEndian>().unwrap();
-        let string_data = &data[group_offset as usize + string_offset as usize .. ]; // -0x10 correctly aligns snakes first group
-        let name = String::from(util::parse_str(string_data).unwrap());
-
-        let data_offset = (&data[child_index + 0xc .. ]).read_i32::<BigEndian>().unwrap();
-        let child_data = &data[group_offset as usize + data_offset as usize .. ];
-
+    for resource in resources::resources(&data[resources_offset as usize ..]) {
+        let child_data = &data[resources_offset as usize + resource.data_offset as usize .. ];
         children.push(Chr0Child {
-            string_offset,
-            data_offset,
-            name
+            string_offset: resource.string_offset,
+            data_offset:   resource.data_offset,
+            name:          resource.string
         });
     }
 
@@ -94,7 +63,6 @@ fn chr0(data: &[u8]) -> Chr0 {
         size,
         version,
         bres_offset,
-        group_offset,
         string_offset,
         orig_path_offset,
         num_frames,
@@ -110,20 +78,12 @@ fn chr0(data: &[u8]) -> Chr0 {
 // BRESHeader and RootHeader are combined because without BRESEntry they appear to be sequential
 #[derive(Debug)]
 pub struct Bres {
-    total_size: i32,
     pub children: Vec<BresChild>
 }
 
 const ROOT_SIZE: usize = 0x8;
-const BRES_GROUP_SIZE: usize = 0x8;
-
-const BRES_CHILD_SIZE: usize = 0x10;
 #[derive(Debug)]
 pub struct BresChild {
-    id: u16,
-    flag: u16,
-    left_index: u16,
-    right_index: u16,
     string_offset: i32,
     data_offset: i32,
     pub name: String,
@@ -143,7 +103,6 @@ pub struct Chr0 {
     size: i32,
     version: i32,
     bres_offset: i32,
-    group_offset: i32,
     string_offset: i32,
     orig_path_offset: i32,
     pub num_frames: u16,
