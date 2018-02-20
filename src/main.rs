@@ -11,6 +11,7 @@ pub mod parse;
 pub mod bres;
 pub mod util;
 pub mod resources;
+pub mod chr0;
 
 use parse::{SectionData, ArcChildData, Arc};
 
