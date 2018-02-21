@@ -1,5 +1,6 @@
 extern crate pf_sandbox;
 extern crate byteorder;
+extern crate cgmath;
 
 use std::fs;
 use std::env;
@@ -8,10 +9,11 @@ use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
 
 pub mod parse;
-pub mod bres;
 pub mod util;
+pub mod bres;
 pub mod resources;
 pub mod chr0;
+pub mod mdl0;
 
 use parse::{SectionData, ArcChildData, Arc};
 

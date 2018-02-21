@@ -3,6 +3,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use util;
 use resources;
 use chr0::*;
+use mdl0::*;
 
 pub(crate) fn bres(data: &[u8]) -> Bres {
     let root_offset = (&data[0xc..0xe]).read_u16::<BigEndian>().unwrap();
@@ -17,6 +18,7 @@ fn bres_group(data: &[u8]) -> Bres {
         let tag = util::parse_tag(child_data);
         let child_data = match tag.as_ref() {
             "CHR0" => BresChildData::Chr0 (chr0(child_data)),
+            "MDL0" => BresChildData::Mdl0 (mdl0(child_data)),
             "" => BresChildData::Bres (Box::new(bres_group(&data[resource.data_offset as usize ..]))),
             _  => BresChildData::Unknown (tag),
         };
@@ -54,6 +56,7 @@ pub struct BresChild {
 #[derive(Debug)]
 pub enum BresChildData {
     Chr0 (Chr0),
+    Mdl0 (Mdl0),
     Bres (Box<Bres>),
     Unknown (String)
 }

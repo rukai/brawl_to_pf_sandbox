@@ -90,6 +90,7 @@ name = "brawl_exporter"
 version = "0.1.0"
 dependencies = [
  "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cgmath 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pf_sandbox 0.1.1",
 ]
 
