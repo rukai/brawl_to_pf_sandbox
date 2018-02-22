@@ -31,6 +31,17 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
                 let mut moveset_file = File::open(fighter_path.join(format!("Fit{}.pac", cased_fighter_name)));
                 let mut motion_file = File::open(fighter_path.join(format!("Fit{}MotionEtc.pac", cased_fighter_name)));
 
+                let mut model_files = vec!();
+                for i in 0..100 {
+                    if let Ok(model_file) = File::open(fighter_path.join(format!("Fit{}{:02}.pac", cased_fighter_name, i))) {
+                        model_files.push(model_file);
+                        break; // TODO: allow this to be toggled on/off
+                    }
+                    else {
+                        break;
+                    }
+                }
+
                 if let (Ok(mut moveset_file), Ok(mut motion_file)) = (moveset_file, motion_file) {
                     let mut moveset_data: Vec<u8> = vec!();
                     moveset_file.read_to_end(&mut moveset_data).unwrap();
@@ -38,11 +49,19 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
                     let mut motion_data: Vec<u8> = vec!();
                     motion_file.read_to_end(&mut motion_data).unwrap();
 
+                    let mut models = vec!();
+                    for mut model_file in model_files {
+                        let mut model_data: Vec<u8> = vec!();
+                        model_file.read_to_end(&mut model_data).unwrap();
+                        models.push(arc(&model_data));
+                    }
+
                     let fighter = BrawlFighter {
                         folder_name,
                         cased_fighter_name: cased_fighter_name,
                         moveset: arc(&moveset_data),
                         motion: arc(&motion_data),
+                        models,
                     };
                     fighters.push(fighter);
                 }
@@ -120,6 +139,7 @@ pub struct BrawlFighter {
         folder_name: String,
     pub moveset: Arc,
     pub motion: Arc,
+    pub models: Vec<Arc>
 }
 
 const ARC_HEADER_SIZE: usize = 0x40;
