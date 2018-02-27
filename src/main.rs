@@ -17,6 +17,7 @@ pub mod resources;
 pub mod chr0;
 pub mod mdl0;
 pub mod mbox;
+pub mod misc_section;
 
 use parse::{SectionData, ArcChildData, Arc};
 
@@ -31,6 +32,10 @@ fn main() {
 
             let mut package = Package::open_or_generate("brawl").unwrap();
             package.fighters.clear();
+
+            if "all" == arg {
+                println!("{:#?}", brawl_fighters);
+            }
 
             for brawl_fighter in brawl_fighters.iter() {
                 if brawl_fighter.cased_fighter_name == arg {
@@ -141,7 +146,7 @@ fn main() {
                 &ArcChildData::Arc (ref arc) => {
                     process_motion(arc);
                 }
-                &ArcChildData::Bres (ref bres) => {
+                &ArcChildData::Bres (ref _bres) => {
                 }
                 _ => { }
             }

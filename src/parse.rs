@@ -6,6 +6,8 @@ use byteorder::{BigEndian, ReadBytesExt};
 
 use bres::*;
 use util;
+use misc_section::MiscSection;
+use misc_section;
 
 pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
     let mut fighters = vec!();
@@ -27,7 +29,6 @@ pub fn fighters(fighter_dir: ReadDir) -> Vec<BrawlFighter> {
 
             // read
             if let Some(cased_fighter_name) = cased_fighter_name {
-                //println!("name: {}", cased_fighter_name);
                 let mut moveset_file = File::open(fighter_path.join(format!("Fit{}.pac", cased_fighter_name)));
                 let mut motion_file = File::open(fighter_path.join(format!("Fit{}MotionEtc.pac", cased_fighter_name)));
 
@@ -80,7 +81,7 @@ fn arc(data: &[u8]) -> Arc {
     let mut children = vec!();
     let mut header_index = ARC_HEADER_SIZE;
     for i in 0..num_sub_headers {
-        let mut arc_child = ArcChild::new(&data[header_index ..]);
+        let mut arc_child = arc_child(&data[header_index ..]);
         if arc_child.redirect_index == 0xFF {
             let tag = util::parse_tag(&data[header_index + ARC_CHILD_HEADER_SIZE .. ]);
             let child_data = &data[header_index + ARC_CHILD_HEADER_SIZE ..];
@@ -111,26 +112,156 @@ fn arc(data: &[u8]) -> Arc {
     Arc { name, children }
 }
 
-fn arc_sakurai(data: &[u8]) -> ArcSakurai {
-    let mut header = ArcSakurai::new(data);
-
-    let lookup_entries_index = ARC_SAKURAI_HEADER_SIZE + header.lookup_offset as usize;
-    let sections_index = lookup_entries_index + header.lookup_entry_count as usize * 4;
-    let external_subroutines_index = sections_index + header.section_count as usize * 8;
-    let string_table_index = external_subroutines_index + header.external_subroutine_count as usize * 8;
-
-    for i in 0..header.section_count {
-        let mut section = ArcSakuraiSection::new(&data[sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE ..]);
-        section.name = String::from(util::parse_str(&data[string_table_index + section.string_offset as usize ..]).unwrap());
-
-        if &section.name == "data" {
-            let header = ArcFighterData::new(&data[ARC_SAKURAI_HEADER_SIZE + section.data_offset as usize ..]);
-            let attributes = FighterAttributes::new(&data[ARC_SAKURAI_HEADER_SIZE + header.attribute_start as usize ..]);
-            section.data = SectionData::FighterData { header, attributes };
-        }
-        header.sections.push(section);
+fn arc_child(data: &[u8]) -> ArcChild {
+    ArcChild {
+        ty:             (&data[0..2]).read_i16::<BigEndian>().unwrap(),
+        index:          (&data[2..4]).read_i16::<BigEndian>().unwrap(),
+        size:           (&data[4..8]).read_i32::<BigEndian>().unwrap(),
+        group_index:      data[8],
+        redirect_index: (&data[9..11]).read_i16::<BigEndian>().unwrap(),
+        data:           ArcChildData::Unknown,
     }
-    header
+}
+
+fn arc_sakurai(data: &[u8]) -> ArcSakurai {
+    let size                      = (&data[0..4]).read_i32::<BigEndian>().unwrap();
+    let lookup_offset             = (&data[4..8]).read_i32::<BigEndian>().unwrap();
+    let lookup_entry_count        = (&data[8..12]).read_i32::<BigEndian>().unwrap();
+    let section_count             = (&data[12..16]).read_i32::<BigEndian>().unwrap();
+    let external_subroutine_count = (&data[16..20]).read_i32::<BigEndian>().unwrap();
+    let mut sections = vec!();
+
+    let lookup_entries_index = ARC_SAKURAI_HEADER_SIZE + lookup_offset as usize;
+    let sections_index = lookup_entries_index + lookup_entry_count as usize * 4;
+    let external_subroutines_index = sections_index + section_count as usize * 8;
+    let string_table_index = external_subroutines_index + external_subroutine_count as usize * 8;
+
+    for i in 0..section_count {
+        let offset = sections_index + i as usize * ARC_SAKURAI_SECTION_HEADER_SIZE;
+        let data_offset   = (&data[offset     ..]).read_i32::<BigEndian>().unwrap();
+        let string_offset = (&data[offset + 4 ..]).read_i32::<BigEndian>().unwrap();
+        let name = String::from(util::parse_str(&data[string_table_index + string_offset as usize ..]).unwrap());
+        let mut section_data = SectionData::None;
+
+        if &name == "data" {
+            let header = arc_fighter_data(&data[ARC_SAKURAI_HEADER_SIZE + data_offset as usize ..]);
+            let attributes = fighter_attributes(&data[ARC_SAKURAI_HEADER_SIZE + header.attribute_start as usize ..]);
+            let misc = misc_section::misc_section(&data[ARC_SAKURAI_HEADER_SIZE + header.misc_section_offset as usize ..], &data[ARC_SAKURAI_HEADER_SIZE ..]);
+            section_data = SectionData::FighterData { header, attributes, misc };
+        }
+        sections.push(ArcSakuraiSection { data_offset, string_offset, name, data: section_data });
+    }
+
+    ArcSakurai { size, lookup_offset, lookup_entry_count, section_count, external_subroutine_count, sections }
+}
+
+fn arc_fighter_data(data: &[u8]) -> ArcFighterData {
+    ArcFighterData {
+        subaction_flags_start:      (&data[0..4]).read_i32::<BigEndian>().unwrap(),
+        model_visibility_start:     (&data[4..8]).read_i32::<BigEndian>().unwrap(),
+        attribute_start:            (&data[8..12]).read_i32::<BigEndian>().unwrap(),
+        sse_attribute_start:        (&data[12..16]).read_i32::<BigEndian>().unwrap(),
+        misc_section_offset:        (&data[16..20]).read_i32::<BigEndian>().unwrap(),
+        common_action_flags_start:  (&data[20..24]).read_i32::<BigEndian>().unwrap(),
+        action_flags_start:         (&data[24..28]).read_i32::<BigEndian>().unwrap(),
+        action_interrupts:          (&data[32..36]).read_i32::<BigEndian>().unwrap(),
+        entry_actions_start:        (&data[36..40]).read_i32::<BigEndian>().unwrap(),
+        exit_actions_start:         (&data[40..44]).read_i32::<BigEndian>().unwrap(),
+        action_pre_start:           (&data[44..48]).read_i32::<BigEndian>().unwrap(),
+        subaction_main_start:       (&data[48..52]).read_i32::<BigEndian>().unwrap(),
+        subaction_gfx_start:        (&data[52..56]).read_i32::<BigEndian>().unwrap(),
+        subaction_sfx_start:        (&data[56..60]).read_i32::<BigEndian>().unwrap(),
+        subaction_other_start:      (&data[60..64]).read_i32::<BigEndian>().unwrap(),
+        anchored_item_positions:    (&data[64..68]).read_i32::<BigEndian>().unwrap(),
+        gooey_bomb_positions:       (&data[58..72]).read_i32::<BigEndian>().unwrap(),
+        bone_ref1:                  (&data[72..76]).read_i32::<BigEndian>().unwrap(),
+        bone_ref2:                  (&data[76..80]).read_i32::<BigEndian>().unwrap(),
+        entry_action_overrides:     (&data[80..84]).read_i32::<BigEndian>().unwrap(),
+        exit_action_overrides:      (&data[84..88]).read_i32::<BigEndian>().unwrap(),
+        samus_arm_cannon_positions: (&data[92..96]).read_i32::<BigEndian>().unwrap(),
+        static_articles_start:      (&data[100..104]).read_i32::<BigEndian>().unwrap(),
+        entry_articles_start:       (&data[104..108]).read_i32::<BigEndian>().unwrap(),
+        flags1:                     (&data[116..120]).read_u32::<BigEndian>().unwrap(),
+        flags2:                     (&data[120..124]).read_i32::<BigEndian>().unwrap(),
+    }
+}
+
+fn fighter_attributes(data: &[u8]) -> FighterAttributes {
+    FighterAttributes {
+        walk_init_vel:                     (&data[0x00..0x04]).read_f32::<BigEndian>().unwrap(),
+        walk_acc:                          (&data[0x04..0x08]).read_f32::<BigEndian>().unwrap(),
+        walk_max_vel:                      (&data[0x08..0x0c]).read_f32::<BigEndian>().unwrap(),
+        ground_friction:                   (&data[0x0c..0x10]).read_f32::<BigEndian>().unwrap(),
+        dash_init_vel:                     (&data[0x10..0x14]).read_f32::<BigEndian>().unwrap(),
+        dash_run_acc_a:                    (&data[0x14..0x18]).read_f32::<BigEndian>().unwrap(),
+        dash_run_acc_b:                    (&data[0x18..0x1c]).read_f32::<BigEndian>().unwrap(),
+        dash_run_term_vel:                 (&data[0x1c..0x20]).read_f32::<BigEndian>().unwrap(),
+        grounded_max_x_vel:                (&data[0x24..0x28]).read_f32::<BigEndian>().unwrap(),
+        dash_cancel_frame_window:          (&data[0x28..0x2c]).read_i32::<BigEndian>().unwrap(),
+        guard_on_max_momentum:             (&data[0x2c..0x30]).read_f32::<BigEndian>().unwrap(),
+        jump_squat_frames:                 (&data[0x30..0x34]).read_i32::<BigEndian>().unwrap(),
+        jump_x_init_vel:                   (&data[0x34..0x38]).read_f32::<BigEndian>().unwrap(),
+        jump_y_init_vel:                   (&data[0x38..0x3c]).read_f32::<BigEndian>().unwrap(),
+        jump_x_vel_ground_mult:            (&data[0x3c..0x40]).read_f32::<BigEndian>().unwrap(),
+        jump_x_init_term_vel:              (&data[0x40..0x44]).read_f32::<BigEndian>().unwrap(),
+        jump_y_init_vel_short:             (&data[0x44..0x48]).read_f32::<BigEndian>().unwrap(),
+        air_jump_x_mult:                   (&data[0x48..0x4c]).read_f32::<BigEndian>().unwrap(),
+        air_jump_y_mult:                   (&data[0x4c..0x50]).read_f32::<BigEndian>().unwrap(),
+        footstool_init_vel:                (&data[0x50..0x54]).read_f32::<BigEndian>().unwrap(),
+        footstool_init_vel_short:          (&data[0x54..0x58]).read_f32::<BigEndian>().unwrap(),
+        meteor_cancel_delay:               (&data[0x5c..0x60]).read_f32::<BigEndian>().unwrap(),
+        num_jumps:                         (&data[0x60..0x64]).read_u32::<BigEndian>().unwrap(),
+        gravity:                           (&data[0x64..0x68]).read_f32::<BigEndian>().unwrap(),
+        term_vel:                          (&data[0x68..0x6c]).read_f32::<BigEndian>().unwrap(),
+        air_friction_y:                    (&data[0x6c..0x70]).read_f32::<BigEndian>().unwrap(),
+        air_y_term_vel:                    (&data[0x70..0x74]).read_f32::<BigEndian>().unwrap(),
+        air_mobility_a:                    (&data[0x74..0x78]).read_f32::<BigEndian>().unwrap(),
+        air_mobility_b:                    (&data[0x78..0x7c]).read_f32::<BigEndian>().unwrap(),
+        air_x_term_mobility:               (&data[0x7c..0x80]).read_f32::<BigEndian>().unwrap(),
+        air_friction_x:                    (&data[0x80..0x84]).read_f32::<BigEndian>().unwrap(),
+        fastfall_velocity:                 (&data[0x84..0x88]).read_f32::<BigEndian>().unwrap(),
+        air_x_term_vel:                    (&data[0x88..0x8c]).read_f32::<BigEndian>().unwrap(),
+        glide_frame_window:                (&data[0x8c..0x90]).read_u32::<BigEndian>().unwrap(),
+        jab2_window:                       (&data[0x94..0x98]).read_f32::<BigEndian>().unwrap(),
+        jab3_window:                       (&data[0x98..0x9c]).read_f32::<BigEndian>().unwrap(),
+        ftilt2_window:                     (&data[0x9c..0xa0]).read_f32::<BigEndian>().unwrap(),
+        ftilt3_window:                     (&data[0xa0..0xa4]).read_f32::<BigEndian>().unwrap(),
+        fsmash2_window:                    (&data[0xa4..0xa8]).read_f32::<BigEndian>().unwrap(),
+        flip_dir_frame:                    (&data[0xa8..0xac]).read_f32::<BigEndian>().unwrap(),
+        weight:                            (&data[0xb0..0xb4]).read_f32::<BigEndian>().unwrap(),
+        size:                              (&data[0xb4..0xb8]).read_f32::<BigEndian>().unwrap(),
+        results_screen_size:               (&data[0xb8..0xbc]).read_f32::<BigEndian>().unwrap(),
+        shield_size:                       (&data[0xc4..0xc8]).read_f32::<BigEndian>().unwrap(),
+        shield_break_vel:                  (&data[0xc8..0xcc]).read_f32::<BigEndian>().unwrap(),
+        shield_strength:                   (&data[0xcc..0xd0]).read_f32::<BigEndian>().unwrap(),
+        respawn_platform_size:             (&data[0xd4..0xd8]).read_f32::<BigEndian>().unwrap(),
+        edge_jump_x_vel:                   (&data[0xf4..0xf8]).read_f32::<BigEndian>().unwrap(),
+        edge_jump_y_vel:                   (&data[0xfc..0x100]).read_f32::<BigEndian>().unwrap(),
+        item_throw_strength:               (&data[0x118..0x11c]).read_f32::<BigEndian>().unwrap(),
+        projectile_item_move_speed:        (&data[0x128..0x12c]).read_f32::<BigEndian>().unwrap(),
+        projectile_item_move_speed_dash_f: (&data[0x12c..0x130]).read_f32::<BigEndian>().unwrap(),
+        projectile_item_move_speed_dash_b: (&data[0x130..0x134]).read_f32::<BigEndian>().unwrap(),
+        light_landing_lag:                 (&data[0x138..0x13c]).read_f32::<BigEndian>().unwrap(),
+        normal_landing_lag:                (&data[0x13c..0x140]).read_f32::<BigEndian>().unwrap(),
+        nair_landing_lag:                  (&data[0x140..0x144]).read_f32::<BigEndian>().unwrap(),
+        fair_landing_lag:                  (&data[0x144..0x148]).read_f32::<BigEndian>().unwrap(),
+        bair_landing_lag:                  (&data[0x148..0x14c]).read_f32::<BigEndian>().unwrap(),
+        uair_landing_lag:                  (&data[0x14c..0x150]).read_f32::<BigEndian>().unwrap(),
+        dair_landing_lag:                  (&data[0x150..0x154]).read_f32::<BigEndian>().unwrap(),
+        term_vel_hard_frames:              (&data[0x154..0x158]).read_u32::<BigEndian>().unwrap(),
+        hip_n_bone:                        (&data[0x158..0x15c]).read_u32::<BigEndian>().unwrap(),
+        tag_height_value:                  (&data[0x15c..0x160]).read_f32::<BigEndian>().unwrap(),
+        walljump_x_vel:                    (&data[0x164..0x168]).read_f32::<BigEndian>().unwrap(),
+        walljump_y_vel:                    (&data[0x168..0x16c]).read_f32::<BigEndian>().unwrap(),
+        lhand_n_bone:                      (&data[0x180..0x184]).read_u32::<BigEndian>().unwrap(),
+        rhand_n_bone:                      (&data[0x184..0x188]).read_u32::<BigEndian>().unwrap(),
+        water_y_acc:                       (&data[0x18c..0x190]).read_f32::<BigEndian>().unwrap(),
+        spit_star_size:                    (&data[0x1a4..0x1a8]).read_f32::<BigEndian>().unwrap(),
+        spit_star_damage:                  (&data[0x1a8..0x1ac]).read_u32::<BigEndian>().unwrap(),
+        egg_size:                          (&data[0x1ac..0x1b0]).read_f32::<BigEndian>().unwrap(),
+        hip_n_bone2:                       (&data[0x1cc..0x1d0]).read_u32::<BigEndian>().unwrap(),
+        x_rot_n_bone:                      (&data[0x1e0..0x1e4]).read_u32::<BigEndian>().unwrap(),
+    }
 }
 
 #[derive(Debug)]
@@ -158,20 +289,7 @@ pub struct ArcChild {
     size: i32,
     group_index: u8,
     redirect_index: i16, // The index of a different file to read
-    pub data: ArcChildData, // TODO: delete box
-}
-
-impl ArcChild {
-    pub fn new(data: &[u8]) -> ArcChild {
-        ArcChild {
-            ty:             (&data[0..2]).read_i16::<BigEndian>().unwrap(),
-            index:          (&data[2..4]).read_i16::<BigEndian>().unwrap(),
-            size:           (&data[4..8]).read_i32::<BigEndian>().unwrap(),
-            group_index:    data[8],
-            redirect_index: (&data[9..11]).read_i16::<BigEndian>().unwrap(),
-            data:           ArcChildData::Unknown,
-        }
-    }
+    pub data: ArcChildData,
 }
 
 #[derive(Debug)]
@@ -199,19 +317,6 @@ pub struct ArcSakurai {
     pub sections: Vec<ArcSakuraiSection>,
 }
 
-impl ArcSakurai {
-    pub fn new(data: &[u8]) -> ArcSakurai {
-        ArcSakurai {
-            size:                      (&data[0..4]).read_i32::<BigEndian>().unwrap(),
-            lookup_offset:             (&data[4..8]).read_i32::<BigEndian>().unwrap(),
-            lookup_entry_count:        (&data[8..12]).read_i32::<BigEndian>().unwrap(),
-            section_count:             (&data[12..16]).read_i32::<BigEndian>().unwrap(),
-            external_subroutine_count: (&data[16..20]).read_i32::<BigEndian>().unwrap(),
-            sections:                  vec!(),
-        }
-    }
-}
-
 const ARC_SAKURAI_SECTION_HEADER_SIZE: usize = 0x8;
 #[derive(Debug)]
 pub struct ArcSakuraiSection {
@@ -221,20 +326,9 @@ pub struct ArcSakuraiSection {
     pub data: SectionData,
 }
 
-impl ArcSakuraiSection {
-    pub fn new(data: &[u8]) -> ArcSakuraiSection {
-        ArcSakuraiSection {
-            data_offset:   (&data[0..4]).read_i32::<BigEndian>().unwrap(),
-            string_offset: (&data[4..8]).read_i32::<BigEndian>().unwrap(),
-            name:          String::from(""),
-            data:          SectionData::None,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum SectionData {
-    FighterData { header: ArcFighterData, attributes: FighterAttributes },
+    FighterData { header: ArcFighterData, attributes: FighterAttributes, misc: MiscSection },
     None,
 }
 
@@ -267,39 +361,6 @@ pub struct ArcFighterData {
     entry_articles_start: i32,
     flags1: u32,
     flags2: i32,
-}
-
-impl ArcFighterData {
-    pub fn new(data: &[u8]) -> ArcFighterData {
-        ArcFighterData {
-            subaction_flags_start:      (&data[0..4]).read_i32::<BigEndian>().unwrap(),
-            model_visibility_start:     (&data[4..8]).read_i32::<BigEndian>().unwrap(),
-            attribute_start:            (&data[8..12]).read_i32::<BigEndian>().unwrap(),
-            sse_attribute_start:        (&data[12..16]).read_i32::<BigEndian>().unwrap(),
-            misc_section_offset:        (&data[16..20]).read_i32::<BigEndian>().unwrap(),
-            common_action_flags_start:  (&data[20..24]).read_i32::<BigEndian>().unwrap(),
-            action_flags_start:         (&data[24..28]).read_i32::<BigEndian>().unwrap(),
-            action_interrupts:          (&data[32..36]).read_i32::<BigEndian>().unwrap(),
-            entry_actions_start:        (&data[36..40]).read_i32::<BigEndian>().unwrap(),
-            exit_actions_start:         (&data[40..44]).read_i32::<BigEndian>().unwrap(),
-            action_pre_start:           (&data[44..48]).read_i32::<BigEndian>().unwrap(),
-            subaction_main_start:       (&data[48..52]).read_i32::<BigEndian>().unwrap(),
-            subaction_gfx_start:        (&data[52..56]).read_i32::<BigEndian>().unwrap(),
-            subaction_sfx_start:        (&data[56..60]).read_i32::<BigEndian>().unwrap(),
-            subaction_other_start:      (&data[60..64]).read_i32::<BigEndian>().unwrap(),
-            anchored_item_positions:    (&data[64..68]).read_i32::<BigEndian>().unwrap(),
-            gooey_bomb_positions:       (&data[58..72]).read_i32::<BigEndian>().unwrap(),
-            bone_ref1:                  (&data[72..76]).read_i32::<BigEndian>().unwrap(),
-            bone_ref2:                  (&data[76..80]).read_i32::<BigEndian>().unwrap(),
-            entry_action_overrides:     (&data[80..84]).read_i32::<BigEndian>().unwrap(),
-            exit_action_overrides:      (&data[84..88]).read_i32::<BigEndian>().unwrap(),
-            samus_arm_cannon_positions: (&data[92..96]).read_i32::<BigEndian>().unwrap(),
-            static_articles_start:      (&data[100..104]).read_i32::<BigEndian>().unwrap(),
-            entry_articles_start:       (&data[104..108]).read_i32::<BigEndian>().unwrap(),
-            flags1:                     (&data[116..120]).read_u32::<BigEndian>().unwrap(),
-            flags2:                     (&data[120..124]).read_i32::<BigEndian>().unwrap(),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -377,84 +438,4 @@ pub struct FighterAttributes {
     pub egg_size: f32,
     pub hip_n_bone2: u32,
     pub x_rot_n_bone: u32, // bone to be grabbed from?
-}
-
-impl FighterAttributes {
-    pub fn new(data: &[u8]) -> FighterAttributes {
-        FighterAttributes {
-            walk_init_vel:                     (&data[0x00..0x04]).read_f32::<BigEndian>().unwrap(),
-            walk_acc:                          (&data[0x04..0x08]).read_f32::<BigEndian>().unwrap(),
-            walk_max_vel:                      (&data[0x08..0x0c]).read_f32::<BigEndian>().unwrap(),
-            ground_friction:                   (&data[0x0c..0x10]).read_f32::<BigEndian>().unwrap(),
-            dash_init_vel:                     (&data[0x10..0x14]).read_f32::<BigEndian>().unwrap(),
-            dash_run_acc_a:                    (&data[0x14..0x18]).read_f32::<BigEndian>().unwrap(),
-            dash_run_acc_b:                    (&data[0x18..0x1c]).read_f32::<BigEndian>().unwrap(),
-            dash_run_term_vel:                 (&data[0x1c..0x20]).read_f32::<BigEndian>().unwrap(),
-            grounded_max_x_vel:                (&data[0x24..0x28]).read_f32::<BigEndian>().unwrap(),
-            dash_cancel_frame_window:          (&data[0x28..0x2c]).read_i32::<BigEndian>().unwrap(),
-            guard_on_max_momentum:             (&data[0x2c..0x30]).read_f32::<BigEndian>().unwrap(),
-            jump_squat_frames:                 (&data[0x30..0x34]).read_i32::<BigEndian>().unwrap(),
-            jump_x_init_vel:                   (&data[0x34..0x38]).read_f32::<BigEndian>().unwrap(),
-            jump_y_init_vel:                   (&data[0x38..0x3c]).read_f32::<BigEndian>().unwrap(),
-            jump_x_vel_ground_mult:            (&data[0x3c..0x40]).read_f32::<BigEndian>().unwrap(),
-            jump_x_init_term_vel:              (&data[0x40..0x44]).read_f32::<BigEndian>().unwrap(),
-            jump_y_init_vel_short:             (&data[0x44..0x48]).read_f32::<BigEndian>().unwrap(),
-            air_jump_x_mult:                   (&data[0x48..0x4c]).read_f32::<BigEndian>().unwrap(),
-            air_jump_y_mult:                   (&data[0x4c..0x50]).read_f32::<BigEndian>().unwrap(),
-            footstool_init_vel:                (&data[0x50..0x54]).read_f32::<BigEndian>().unwrap(),
-            footstool_init_vel_short:          (&data[0x54..0x58]).read_f32::<BigEndian>().unwrap(),
-            meteor_cancel_delay:               (&data[0x5c..0x60]).read_f32::<BigEndian>().unwrap(),
-            num_jumps:                         (&data[0x60..0x64]).read_u32::<BigEndian>().unwrap(),
-            gravity:                           (&data[0x64..0x68]).read_f32::<BigEndian>().unwrap(),
-            term_vel:                          (&data[0x68..0x6c]).read_f32::<BigEndian>().unwrap(),
-            air_friction_y:                    (&data[0x6c..0x70]).read_f32::<BigEndian>().unwrap(),
-            air_y_term_vel:                    (&data[0x70..0x74]).read_f32::<BigEndian>().unwrap(),
-            air_mobility_a:                    (&data[0x74..0x78]).read_f32::<BigEndian>().unwrap(),
-            air_mobility_b:                    (&data[0x78..0x7c]).read_f32::<BigEndian>().unwrap(),
-            air_x_term_mobility:               (&data[0x7c..0x80]).read_f32::<BigEndian>().unwrap(),
-            air_friction_x:                    (&data[0x80..0x84]).read_f32::<BigEndian>().unwrap(),
-            fastfall_velocity:                 (&data[0x84..0x88]).read_f32::<BigEndian>().unwrap(),
-            air_x_term_vel:                    (&data[0x88..0x8c]).read_f32::<BigEndian>().unwrap(),
-            glide_frame_window:                (&data[0x8c..0x90]).read_u32::<BigEndian>().unwrap(),
-            jab2_window:                       (&data[0x94..0x98]).read_f32::<BigEndian>().unwrap(),
-            jab3_window:                       (&data[0x98..0x9c]).read_f32::<BigEndian>().unwrap(),
-            ftilt2_window:                     (&data[0x9c..0xa0]).read_f32::<BigEndian>().unwrap(),
-            ftilt3_window:                     (&data[0xa0..0xa4]).read_f32::<BigEndian>().unwrap(),
-            fsmash2_window:                    (&data[0xa4..0xa8]).read_f32::<BigEndian>().unwrap(),
-            flip_dir_frame:                    (&data[0xa8..0xac]).read_f32::<BigEndian>().unwrap(),
-            weight:                            (&data[0xb0..0xb4]).read_f32::<BigEndian>().unwrap(),
-            size:                              (&data[0xb4..0xb8]).read_f32::<BigEndian>().unwrap(),
-            results_screen_size:               (&data[0xb8..0xbc]).read_f32::<BigEndian>().unwrap(),
-            shield_size:                       (&data[0xc4..0xc8]).read_f32::<BigEndian>().unwrap(),
-            shield_break_vel:                  (&data[0xc8..0xcc]).read_f32::<BigEndian>().unwrap(),
-            shield_strength:                   (&data[0xcc..0xd0]).read_f32::<BigEndian>().unwrap(),
-            respawn_platform_size:             (&data[0xd4..0xd8]).read_f32::<BigEndian>().unwrap(),
-            edge_jump_x_vel:                   (&data[0xf4..0xf8]).read_f32::<BigEndian>().unwrap(),
-            edge_jump_y_vel:                   (&data[0xfc..0x100]).read_f32::<BigEndian>().unwrap(),
-            item_throw_strength:               (&data[0x118..0x11c]).read_f32::<BigEndian>().unwrap(),
-            projectile_item_move_speed:        (&data[0x128..0x12c]).read_f32::<BigEndian>().unwrap(),
-            projectile_item_move_speed_dash_f: (&data[0x12c..0x130]).read_f32::<BigEndian>().unwrap(),
-            projectile_item_move_speed_dash_b: (&data[0x130..0x134]).read_f32::<BigEndian>().unwrap(),
-            light_landing_lag:                 (&data[0x138..0x13c]).read_f32::<BigEndian>().unwrap(),
-            normal_landing_lag:                (&data[0x13c..0x140]).read_f32::<BigEndian>().unwrap(),
-            nair_landing_lag:                  (&data[0x140..0x144]).read_f32::<BigEndian>().unwrap(),
-            fair_landing_lag:                  (&data[0x144..0x148]).read_f32::<BigEndian>().unwrap(),
-            bair_landing_lag:                  (&data[0x148..0x14c]).read_f32::<BigEndian>().unwrap(),
-            uair_landing_lag:                  (&data[0x14c..0x150]).read_f32::<BigEndian>().unwrap(),
-            dair_landing_lag:                  (&data[0x150..0x154]).read_f32::<BigEndian>().unwrap(),
-            term_vel_hard_frames:              (&data[0x154..0x158]).read_u32::<BigEndian>().unwrap(),
-            hip_n_bone:                        (&data[0x158..0x15c]).read_u32::<BigEndian>().unwrap(),
-            tag_height_value:                  (&data[0x15c..0x160]).read_f32::<BigEndian>().unwrap(),
-            walljump_x_vel:                    (&data[0x164..0x168]).read_f32::<BigEndian>().unwrap(),
-            walljump_y_vel:                    (&data[0x168..0x16c]).read_f32::<BigEndian>().unwrap(),
-            lhand_n_bone:                      (&data[0x180..0x184]).read_u32::<BigEndian>().unwrap(),
-            rhand_n_bone:                      (&data[0x184..0x188]).read_u32::<BigEndian>().unwrap(),
-            water_y_acc:                       (&data[0x18c..0x190]).read_f32::<BigEndian>().unwrap(),
-            spit_star_size:                    (&data[0x1a4..0x1a8]).read_f32::<BigEndian>().unwrap(),
-            spit_star_damage:                  (&data[0x1a8..0x1ac]).read_u32::<BigEndian>().unwrap(),
-            egg_size:                          (&data[0x1ac..0x1b0]).read_f32::<BigEndian>().unwrap(),
-            hip_n_bone2:                       (&data[0x1cc..0x1d0]).read_u32::<BigEndian>().unwrap(),
-            x_rot_n_bone:                      (&data[0x1e0..0x1e4]).read_u32::<BigEndian>().unwrap(),
-        }
-    }
 }
