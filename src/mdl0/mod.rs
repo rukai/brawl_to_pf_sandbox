@@ -1,8 +1,12 @@
+pub mod bones;
+
 use byteorder::{BigEndian, ReadBytesExt};
-use cgmath::Vector3;
 
 use resources::*;
 use resources;
+use mdl0::bones::Bones;
+use mbox::MBox;
+use mbox;
 
 pub(crate) fn mdl0(data: &[u8]) -> Mdl0 {
     let _size        = (&data[0x4..]).read_i32::<BigEndian>().unwrap();
@@ -49,7 +53,7 @@ pub(crate) fn mdl0(data: &[u8]) -> Mdl0 {
             enable_extents:     (&data[props_offset + 0x22 ..]).read_u8().unwrap(),
             env_mtx_mode:       (&data[props_offset + 0x23 ..]).read_u8().unwrap(),
             data_offset:        (&data[props_offset + 0x24 ..]).read_i32::<BigEndian>().unwrap(),
-            extents:   read_mbox(&data[props_offset + 0x28 ..]),
+            extents:  mbox::mbox(&data[props_offset + 0x28 ..]),
         })
     };
 
@@ -84,11 +88,7 @@ pub(crate) fn mdl0(data: &[u8]) -> Mdl0 {
                 11 if fur_version => { textures = Some(resources) }
                 12 if fur_version => { palettes = Some(resources) }
                 0 => { definitions = Some(Mdl0Definitions { resources }) }
-                1 => {
-                    bones = Some(Mdl0Bones {
-                        resources
-                    })
-                }
+                1 => { bones = Some(bones::bones(&data[resources_offset as usize ..], resources)) }
                 2 => { vertices = Some(resources) }
                 3 => { normals = Some(resources) }
                 4 => { colors = Some(resources) }
@@ -122,27 +122,12 @@ pub(crate) fn mdl0(data: &[u8]) -> Mdl0 {
     }
 }
 
-fn read_mbox(data: &[u8]) -> MBox {
-    MBox {
-        min: Vector3::<f32>::new(
-            (&data[0x00..]).read_f32::<BigEndian>().unwrap(),
-            (&data[0x04..]).read_f32::<BigEndian>().unwrap(),
-            (&data[0x08..]).read_f32::<BigEndian>().unwrap(),
-        ),
-        max: Vector3::<f32>::new(
-            (&data[0x0c..]).read_f32::<BigEndian>().unwrap(),
-            (&data[0x10..]).read_f32::<BigEndian>().unwrap(),
-            (&data[0x14..]).read_f32::<BigEndian>().unwrap(),
-        )
-    }
-}
-
 #[derive(Debug)]
 pub struct Mdl0 {
     version: i32,
     pub props: Option<Mdl0Props>,
     definitions: Option<Mdl0Definitions>,
-    bones: Option<Mdl0Bones>,
+    bones: Option<Bones>,
     vertices: Option<Vec<Resource>>,
     normals: Option<Vec<Resource>>,
     colors: Option<Vec<Resource>>,
@@ -154,11 +139,6 @@ pub struct Mdl0 {
     objects: Option<Vec<Resource>>,
     textures: Option<Vec<Resource>>,
     palettes: Option<Vec<Resource>>,
-}
-
-#[derive(Debug)]
-pub struct Mdl0Bones {
-    resources: Vec<Resource>,
 }
 
 #[derive(Debug)]
@@ -185,9 +165,3 @@ pub struct Mdl0Props {
 }
 
 // TODO: move into seperate file
-// named mbox because box is used in std lib
-#[derive(Debug)]
-pub struct MBox {
-    min: Vector3<f32>,
-    max: Vector3<f32>,
-}

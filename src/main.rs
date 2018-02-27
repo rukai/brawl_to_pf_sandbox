@@ -1,6 +1,8 @@
-extern crate pf_sandbox;
 extern crate byteorder;
 extern crate cgmath;
+extern crate pf_sandbox;
+
+#[macro_use] extern crate bitflags;
 
 use std::fs;
 use std::env;
@@ -14,6 +16,7 @@ pub mod bres;
 pub mod resources;
 pub mod chr0;
 pub mod mdl0;
+pub mod mbox;
 
 use parse::{SectionData, ArcChildData, Arc};
 

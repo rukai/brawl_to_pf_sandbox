@@ -5,6 +5,7 @@ authors = ["Rukai <rubickent@gmail.com>"]
 
 [dependencies]
 byteorder = "1"
+bitflags = "1"
 cgmath = "0.16"
 pf_sandbox = { path = "/home/rubic/Projects/Smash/pf_sandbox/pf_sandbox/pf_sandbox" }
 
