@@ -4,10 +4,9 @@ version = "0.1.0"
 authors = ["Rukai <rubickent@gmail.com>"]
 
 [dependencies]
-byteorder = "1"
-bitflags = "1"
 cgmath = "0.16"
 pf_sandbox = { path = "/home/rubic/Projects/Smash/pf_sandbox/pf_sandbox/pf_sandbox" }
+brawllib_rs = { path = "../brawllib_rs" }
 
 [patch.crates-io]
 gilrs = { git = "https://gitlab.com/rukai/gilrs", branch = "pf_sandbox2" }

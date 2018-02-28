@@ -1,8 +1,6 @@
-extern crate byteorder;
 extern crate cgmath;
 extern crate pf_sandbox;
-
-#[macro_use] extern crate bitflags;
+extern crate brawllib_rs;
 
 use std::fs;
 use std::env;
@@ -10,16 +8,7 @@ use std::env;
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
 
-pub mod parse;
-pub mod util;
-pub mod bres;
-pub mod resources;
-pub mod chr0;
-pub mod mdl0;
-pub mod mbox;
-pub mod misc_section;
-
-use parse::{SectionData, ArcChildData, Arc};
+use brawllib_rs::parse::{SectionData, ArcChildData, Arc};
 
 fn main() {
     let mut args = env::args();
@@ -28,7 +17,7 @@ fn main() {
 
     match fs::read_dir("data/brawl/fighter") {
         Ok(fighter_dir) => {
-            let brawl_fighters = parse::fighters(fighter_dir);
+            let brawl_fighters = brawllib_rs::fighters(fighter_dir);
 
             let mut package = Package::open_or_generate("brawl").unwrap();
             package.fighters.clear();
