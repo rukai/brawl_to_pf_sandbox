@@ -1,14 +1,21 @@
+extern crate brawllib_rs;
 extern crate cgmath;
 extern crate pf_sandbox;
-extern crate brawllib_rs;
+extern crate ref_slice;
+extern crate treeflection;
 
 use std::fs;
 use std::env;
 
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
+use treeflection::context_vec::ContextVec;
 
-use brawllib_rs::parse::{SectionData, ArcChildData, Arc};
+use brawllib_rs::parse::{SectionData, ArcChildData};
+use brawllib_rs::bres::BresChildData;
+use brawllib_rs::mdl0::bones::Bone;
+use brawllib_rs::misc_section::HurtBox as BrawlHurtBox;
+use cgmath::Vector3;
 
 fn main() {
     let mut args = env::args();
@@ -37,11 +44,13 @@ fn main() {
                 let mut fighter = Fighter::default();
                 fighter.name = brawl_fighter.cased_fighter_name.clone();
 
+                let mut hurt_boxes = vec!();
+
                 for sub_arc in brawl_fighter.moveset.children {
                     match sub_arc.data {
                         ArcChildData::Sakurai (data) => {
                             for section in data.sections {
-                                if let SectionData::FighterData { attributes, .. } = section.data {
+                                if let SectionData::FighterData { attributes, misc, .. } = section.data {
                                     fighter.air_jumps = attributes.num_jumps as u64 - 1;
                                     fighter.weight = attributes.weight;
                                     fighter.gravity = -attributes.gravity;
@@ -99,6 +108,8 @@ fn main() {
                                     fighter.run_turn_flip_dir_frame = attributes.flip_dir_frame as u64; // TODO
                                     fighter.tilt_turn_flip_dir_frame = attributes.flip_dir_frame as u64;
                                     fighter.tilt_turn_into_dash_iasa = attributes.flip_dir_frame as u64;
+
+                                    hurt_boxes = misc.hurt_boxes;
                                 }
                             }
                         }
@@ -106,15 +117,54 @@ fn main() {
                     }
                 }
 
-                process_motion(&brawl_fighter.motion);
+                // locate bones
+                if let Some(model) = brawl_fighter.models.get(0) {
+                    println!("{:#?}", model.name);
+                    for sub_arc in model.children.iter() {
+                        match &sub_arc.data {
+                            &ArcChildData::Arc (ref _arc) => {
+                                panic!("Not expecting children arc for a model file")
+                            }
+                            &ArcChildData::Bres (ref bres) => {
+                                for bres_child in bres.children.iter() {
+                                    match &bres_child.data {
+                                        &BresChildData::Bres (ref model) => {
+                                            for model_child in model.children.iter() {
+                                                if model_child.name == format!("Fit{}00", brawl_fighter.cased_fighter_name) {
+                                                    match &model_child.data {
+                                                        &BresChildData::Mdl0 (ref model) => {
 
-                for action in fighter.actions.iter_mut() {
-                    for frame in action.frames.iter_mut() {
-                        frame.colboxes.insert(0, CollisionBox {
-                            point: (0.0, 4.0),
-                            radius: 4.0,
-                            role: CollisionBoxRole::Hurt (HurtBox::default()),
-                        });
+                                                            // create fighter data
+                                                            for action in fighter.actions.iter_mut() {
+                                                                for frame in action.frames.iter_mut() {
+                                                                    // TODO: use frame to create animation data, parse to colboxes or something
+                                                                    let (colboxes, links) = gen_colboxes(
+                                                                        ref_slice::opt_slice(&model.bones),
+                                                                        Vector3::<f32>::new(0.0, 0.0, 0.0),
+                                                                        -1, // starts with no parent
+                                                                        false,
+                                                                        &hurt_boxes
+                                                                    );
+                                                                    frame.colboxes = ContextVec::from_vec(colboxes);
+                                                                    frame.colbox_links = links;
+                                                                }
+                                                            }
+                                                        }
+                                                        _ => { }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        &BresChildData::Mdl0 (_) |
+                                        &BresChildData::Chr0 (_) => {
+                                            panic!("Not expecting Mdl or Chr at this level");
+                                        }
+                                        _ => { }
+                                    }
+                                }
+                            }
+                            _ => { }
+                        }
                     }
                 }
 
@@ -128,18 +178,76 @@ fn main() {
             println!("'data' directory incorrectly setup.");
         }
     }
-
-    fn process_motion(arc: &Arc) {
-        for sub_arc in &arc.children {
-            match &sub_arc.data {
-                &ArcChildData::Arc (ref arc) => {
-                    process_motion(arc);
-                }
-                &ArcChildData::Bres (ref _bres) => {
-                }
-                _ => { }
-            }
-        }
-    }
 }
 
+// Hurtboxes are long, starting at the referenced bones parent stretched to the referenced bone.
+// Hitboxes are circle at the bone point (appear long because PM debug mode uses interpolation with the previous frames hitbox)
+// TODO: Need to create a hurtbox if a child is a hurtbox so that it can connect to it. This will replace the parent_is_hurtbox system.
+// TODO: Need to take hitbox from previous frame and interpolate into this frame as an extra ColBox.
+//       Can probably call gen_colboxes on current_frame and prev_frame then add in the interpolation of the previous frames hitboxes.
+
+fn gen_colboxes(
+    bones: &[Bone],
+    mut position: Vector3<f32>,
+    parent_colbox_index: i64,
+    parent_is_hurtbox: bool,
+    hurtboxes: &[BrawlHurtBox]
+    /* TODO: animation_data */
+) -> (Vec<CollisionBox>, Vec<CollisionBoxLink>) {
+    let mut colbox_index = parent_colbox_index;
+    let mut colboxes = vec!();
+    let mut colbox_links = vec!();
+
+    for bone in bones {
+        let mut is_hurtbox = false;
+        for hurtbox in hurtboxes {
+            // transform position
+            //println!("{:#?}", bone);
+            position += bone.translate;
+
+            // create hurtbox
+            is_hurtbox = bone.index == hurtbox.bone_index as i32;
+            if is_hurtbox {
+                colbox_index += 1;
+                colboxes.push(CollisionBox {
+                    point: (position.x, position.y),
+                    radius: hurtbox.radius,
+                    role: CollisionBoxRole::Hurt (HurtBox::default()),
+                });
+
+                if parent_is_hurtbox {
+                    colbox_links.push(CollisionBoxLink {
+                        one: parent_colbox_index as usize,
+                        two: colbox_index as usize,
+                        link_type: LinkType::MeldFirst,
+                    });
+                }
+                break;
+            }
+        }
+
+        // create hitbox
+        // TODO
+
+        if bone.children.len() != 0 {
+            let (descendents, links) = gen_colboxes(
+                &bone.children,
+                position,
+                colbox_index,
+                is_hurtbox,
+                hurtboxes
+            );
+            colbox_index += descendents.len() as i64;
+            colboxes.extend(descendents);
+            colbox_links.extend(links);
+        }
+    }
+
+    (colboxes, colbox_links)
+}
+
+// TODO: In order to take into account the z position for ordering, maybe use a temp struct like:
+// Holder {
+//      colbox: CollisionBox,
+//      z:      f32,
+// }
