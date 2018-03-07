@@ -142,7 +142,6 @@ fn main() {
                                                                         ref_slice::opt_slice(&model.bones),
                                                                         Matrix4::<f32>::zero(),
                                                                         -1, // starts with no parent
-                                                                        false,
                                                                         &hurt_boxes
                                                                     );
                                                                     frame.colboxes = ContextVec::from_vec(colboxes);
@@ -182,15 +181,18 @@ fn main() {
 
 // Hurtboxes are long, starting at the referenced bones parent stretched to the referenced bone.
 // Hitboxes are circle at the bone point (appear long because PM debug mode uses interpolation with the previous frames hitbox)
-// TODO: Need to create a hurtbox if a child is a hurtbox so that it can connect to it. This will replace the parent_is_hurtbox system.
+// Currently creates a single colbox for every bone, creating links between them. (This is nice as
+// it means we have a nicer 'model' to tweak/animate with.
+// TODO: However this may not be accurate, an alternative would be to create two colboxes for every bone (one for parent one for self), links would only be used in these individual 'bones'.
+// I'm pretty sure this is more accurate because the bones no longer rely on the parent hurtbox size.
 // TODO: Need to take hitbox from previous frame and interpolate into this frame as an extra ColBox.
 //       Can probably call gen_colboxes on current_frame and prev_frame then add in the interpolation of the previous frames hitboxes.
 
+// TODO: missing bottom of legs on marth
 fn gen_colboxes(
     bones: &[Bone],
     parent_transform: Matrix4<f32>,
     parent_colbox_index: i64,
-    parent_is_hurtbox: bool,
     hurtboxes: &[BrawlHurtBox]
     /* TODO: animation_data */
 ) -> (Vec<CollisionBox>, Vec<CollisionBoxLink>) {
@@ -220,14 +222,32 @@ fn gen_colboxes(
                     role: CollisionBoxRole::Hurt (HurtBox::default()),
                 });
 
-                if parent_is_hurtbox {
-                    colbox_links.push(CollisionBoxLink {
-                        one: parent_colbox_index as usize,
-                        two: colbox_index as usize,
-                        link_type: LinkType::MeldFirst,
-                    });
-                }
+                colbox_links.push(CollisionBoxLink {
+                    one: parent_colbox_index as usize,
+                    two: colbox_index as usize,
+                    link_type: LinkType::MeldFirst,
+                });
                 break;
+            }
+        }
+
+        // if a child is a hurtbox then we need to create a colbox so it has something to connect to
+        if !is_hurtbox {
+            for child in &bone.children {
+                for hurtbox in hurtboxes {
+                    // create hurtbox
+                    is_hurtbox = child.index == hurtbox.bone_index as i32;
+                    if is_hurtbox {
+                        colbox_index += 1;
+                        colboxes.push(CollisionBox {
+                            //point: (transform.w.x, transform.w.y),
+                            point: (bone.transform.w.x, bone.transform.w.y),
+                            radius: hurtbox.radius,
+                            role: CollisionBoxRole::Hurt (HurtBox::default()),
+                        });
+                        break;
+                    }
+                }
             }
         }
 
@@ -239,7 +259,6 @@ fn gen_colboxes(
                 &bone.children,
                 transform,
                 colbox_index,
-                is_hurtbox,
                 hurtboxes
             );
             colbox_index += descendents.len() as i64;
