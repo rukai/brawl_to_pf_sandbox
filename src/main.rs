@@ -15,7 +15,7 @@ use brawllib_rs::parse::{SectionData, ArcChildData};
 use brawllib_rs::bres::BresChildData;
 use brawllib_rs::mdl0::bones::Bone;
 use brawllib_rs::misc_section::HurtBox as BrawlHurtBox;
-use cgmath::Vector3;
+use cgmath::{Matrix4, Zero};
 
 fn main() {
     let mut args = env::args();
@@ -140,7 +140,7 @@ fn main() {
                                                                     // TODO: use frame to create animation data, parse to colboxes or something
                                                                     let (colboxes, links) = gen_colboxes(
                                                                         ref_slice::opt_slice(&model.bones),
-                                                                        Vector3::<f32>::new(0.0, 0.0, 0.0),
+                                                                        Matrix4::<f32>::zero(),
                                                                         -1, // starts with no parent
                                                                         false,
                                                                         &hurt_boxes
@@ -188,7 +188,7 @@ fn main() {
 
 fn gen_colboxes(
     bones: &[Bone],
-    mut position: Vector3<f32>,
+    parent_transform: Matrix4<f32>,
     parent_colbox_index: i64,
     parent_is_hurtbox: bool,
     hurtboxes: &[BrawlHurtBox]
@@ -199,18 +199,23 @@ fn gen_colboxes(
     let mut colbox_links = vec!();
 
     for bone in bones {
+        // TODO: Might need this for handling animations? Otherwise just delete it
+        // transform position
+        let transform = if parent_colbox_index == -1 {
+            bone.gen_transform()
+        } else {
+            parent_transform * bone.gen_transform()
+        };
+
         let mut is_hurtbox = false;
         for hurtbox in hurtboxes {
-            // transform position
-            //println!("{:#?}", bone);
-            position += bone.translate;
-
             // create hurtbox
             is_hurtbox = bone.index == hurtbox.bone_index as i32;
             if is_hurtbox {
                 colbox_index += 1;
                 colboxes.push(CollisionBox {
-                    point: (position.x, position.y),
+                    //point: (transform.w.x, transform.w.y),
+                    point: (bone.transform.w.x, bone.transform.w.y),
                     radius: hurtbox.radius,
                     role: CollisionBoxRole::Hurt (HurtBox::default()),
                 });
@@ -232,7 +237,7 @@ fn gen_colboxes(
         if bone.children.len() != 0 {
             let (descendents, links) = gen_colboxes(
                 &bone.children,
-                position,
+                transform,
                 colbox_index,
                 is_hurtbox,
                 hurtboxes
