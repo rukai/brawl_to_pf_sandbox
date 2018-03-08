@@ -91,6 +91,7 @@ version = "0.1.0"
 dependencies = [
  "brawllib_rs 0.1.0",
  "cgmath 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "enum_traits 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pf_sandbox 0.1.1",
  "ref_slice 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "treeflection 0.1.31 (registry+https://github.com/rust-lang/crates.io-index)",

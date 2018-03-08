@@ -3,6 +3,9 @@ extern crate cgmath;
 extern crate pf_sandbox;
 extern crate ref_slice;
 extern crate treeflection;
+extern crate enum_traits;
+
+mod action_map;
 
 use std::fs;
 use std::env;
@@ -10,12 +13,14 @@ use std::env;
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
 use treeflection::context_vec::ContextVec;
-
 use brawllib_rs::parse::{SectionData, ArcChildData};
 use brawllib_rs::bres::BresChildData;
+use brawllib_rs::chr0::Chr0;
 use brawllib_rs::mdl0::bones::Bone;
 use brawllib_rs::misc_section::HurtBox as BrawlHurtBox;
 use cgmath::{Matrix4, Zero};
+
+use action_map::action_name_to_indexes;
 
 fn main() {
     let mut args = env::args();
@@ -118,12 +123,13 @@ fn main() {
                 }
 
                 // locate bones
+                let mut first_bone: Option<&Bone> = None;
                 if let Some(model) = brawl_fighter.models.get(0) {
                     println!("{:#?}", model.name);
                     for sub_arc in model.children.iter() {
                         match &sub_arc.data {
-                            &ArcChildData::Arc (ref _arc) => {
-                                panic!("Not expecting children arc for a model file")
+                            &ArcChildData::Arc (_) => {
+                                panic!("Not expecting arc at this level")
                             }
                             &ArcChildData::Bres (ref bres) => {
                                 for bres_child in bres.children.iter() {
@@ -133,36 +139,96 @@ fn main() {
                                                 if model_child.name == format!("Fit{}00", brawl_fighter.cased_fighter_name) {
                                                     match &model_child.data {
                                                         &BresChildData::Mdl0 (ref model) => {
-
-                                                            // create fighter data
-                                                            for action in fighter.actions.iter_mut() {
-                                                                for frame in action.frames.iter_mut() {
-                                                                    // TODO: use frame to create animation data, parse to colboxes or something
-                                                                    let (colboxes, links) = gen_colboxes(
-                                                                        ref_slice::opt_slice(&model.bones),
-                                                                        Matrix4::<f32>::zero(),
-                                                                        -1, // starts with no parent
-                                                                        &hurt_boxes
-                                                                    );
-                                                                    frame.colboxes = ContextVec::from_vec(colboxes);
-                                                                    frame.colbox_links = links;
-                                                                }
-                                                            }
+                                                            first_bone = model.bones.as_ref();
                                                         }
                                                         _ => { }
                                                     }
                                                 }
                                             }
                                         }
-                                        &BresChildData::Mdl0 (_) |
-                                        &BresChildData::Chr0 (_) => {
-                                            panic!("Not expecting Mdl or Chr at this level");
+                                        &BresChildData::Mdl0 (_) => {
+                                            panic!("Not expecting Mdl at this level");
                                         }
                                         _ => { }
                                     }
                                 }
                             }
                             _ => { }
+                        }
+                    }
+                }
+
+                // locate animations
+                let mut chr0s: Vec<&Chr0> = vec!();
+                for sub_arc in &brawl_fighter.motion.children {
+                    match &sub_arc.data {
+                        &ArcChildData::Arc (ref arc) => {
+                            for sub_arc in &arc.children {
+                                match &sub_arc.data {
+                                    &ArcChildData::Bres (ref bres) => {
+                                        for bres_child in bres.children.iter() {
+                                            match &bres_child.data {
+                                                &BresChildData::Bres (ref bres) => {
+                                                    for bres_child in bres.children.iter() {
+                                                        match &bres_child.data {
+                                                            &BresChildData::Bres (_) => {
+                                                                panic!("Not expecting bres at this level");
+                                                            }
+                                                            &BresChildData::Chr0 (ref chr0) => {
+                                                                chr0s.push(chr0);
+                                                            }
+                                                            _ => { }
+                                                        }
+                                                    }
+                                                }
+                                                &BresChildData::Chr0 (_) => {
+                                                    panic!("Not expecting Chr0 at this level");
+                                                }
+                                                _ => { }
+                                            }
+                                        }
+                                    }
+                                    &ArcChildData::Arc (_) => {
+                                        //panic!("Not expecting arc at this level"); // TODO: Whats here
+                                    }
+                                    _ => { }
+                                }
+                            }
+                        }
+                        &ArcChildData::Bres (_) => {
+                            panic!("Not expecting bres at this level");
+                        }
+                        _ => { }
+                    }
+                }
+
+                // create fighter actions
+                if let Some(first_bone) = first_bone {
+                    for chr0 in chr0s {
+                        let mut frames = ContextVec::new();
+                        for i in 0..chr0.num_frames {
+                            let mut frame = ActionFrame::default();
+
+                            // TODO: use frame to create animation data, parse to colboxes or something
+                            let (colboxes, links) = gen_colboxes(
+                                ref_slice::ref_slice(first_bone),
+                                Matrix4::<f32>::zero(),
+                                -1, // starts with no parent
+                                &hurt_boxes
+                            );
+                            frame.colboxes = ContextVec::from_vec(colboxes);
+                            frame.colbox_links = links;
+
+                            frames.push(frame);
+                        }
+
+                        let action = ActionDef {
+                            iasa: 0,
+                            frames
+                        };
+
+                        for index in action_name_to_indexes(&chr0.name) {
+                            fighter.actions[index] = action.clone();
                         }
                     }
                 }
