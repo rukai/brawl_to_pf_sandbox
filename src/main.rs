@@ -238,14 +238,11 @@ fn main() {
 // Hitboxes are circle at the bone point (appear long because PM debug mode uses interpolation with the previous frames hitbox)
 // Currently creates a single colbox for every bone, creating links between them. (This is nice as
 // it means we have a nicer 'model' to tweak/animate with.
-// TODO: However this may not be accurate, an alternative would be to create two colboxes for every bone (one for parent one for self), links would only be used in these individual 'bones'.
-// I'm pretty sure this is more accurate because the bones no longer rely on the parent hurtbox size.
 // TODO: Need to take hitbox from previous frame and interpolate into this frame as an extra ColBox.
 //       Can probably call gen_colboxes on current_frame and prev_frame then add in the interpolation of the previous frames hitboxes.
 
-// TODO: missing bottom of legs on marth
 fn gen_colboxes(
-    bones: &[Bone],
+    bones: &[Bone], // TODO: Pretty sure I can refactor this to just use either a Bone or an Option<Bone>
     parent_transform: Matrix4<f32>,
     parent_colbox_index: i64,
     hurtboxes: &[BrawlHurtBox]
@@ -258,51 +255,41 @@ fn gen_colboxes(
     for bone in bones {
         // TODO: Might need this for handling animations? Otherwise just delete it
         // transform position
-        let transform = if parent_colbox_index == -1 {
+        let _transform = if parent_colbox_index == -1 {
             bone.gen_transform()
         } else {
             parent_transform * bone.gen_transform()
         };
 
-        let mut is_hurtbox = false;
         for hurtbox in hurtboxes {
             // create hurtbox
-            is_hurtbox = bone.index == hurtbox.bone_index as i32;
-            if is_hurtbox {
-                colbox_index += 1;
+            if bone.index == hurtbox.bone_index as i32 {
                 colboxes.push(CollisionBox {
                     //point: (transform.w.x, transform.w.y),
-                    point: (bone.transform.w.x, bone.transform.w.y),
+                    point: (bone.transform.w.x + hurtbox.offset.x, bone.transform.w.y + hurtbox.offset.y), // TODO: pretty sure these should be applied via a matrix, so the translations are orientated correctly
                     radius: hurtbox.radius,
                     role: CollisionBoxRole::Hurt (HurtBox::default()),
                 });
 
-                colbox_links.push(CollisionBoxLink {
-                    one: parent_colbox_index as usize,
-                    two: colbox_index as usize,
-                    link_type: LinkType::MeldFirst,
-                });
-                break;
-            }
-        }
+                colbox_index += 1;
 
-        // if a child is a hurtbox then we need to create a colbox so it has something to connect to
-        if !is_hurtbox {
-            for child in &bone.children {
-                for hurtbox in hurtboxes {
-                    // create hurtbox
-                    is_hurtbox = child.index == hurtbox.bone_index as i32;
-                    if is_hurtbox {
-                        colbox_index += 1;
-                        colboxes.push(CollisionBox {
-                            //point: (transform.w.x, transform.w.y),
-                            point: (bone.transform.w.x, bone.transform.w.y),
-                            radius: hurtbox.radius,
-                            role: CollisionBoxRole::Hurt (HurtBox::default()),
-                        });
-                        break;
-                    }
+                if let Some(first_child_bone) = bone.children.get(bone.children.len()-1) { // TODO: This is weird but seems to work, maybe I need to do it for all children instead? Maybe there is a value that says which child to use.
+                    colboxes.push(CollisionBox {
+                        //point: (transform.w.x, transform.w.y),
+                        point: (first_child_bone.transform.w.x + hurtbox.offset.x, first_child_bone.transform.w.y + hurtbox.offset.y),
+                        radius: hurtbox.radius,
+                        role: CollisionBoxRole::Hurt (HurtBox::default()),
+                    });
+
+                    colbox_links.push(CollisionBoxLink {
+                        one: colbox_index as usize,
+                        two: colbox_index as usize + 1,
+                        link_type: LinkType::MeldFirst,
+                    });
+                    colbox_index += 1;
                 }
+
+                break;
             }
         }
 
@@ -312,7 +299,7 @@ fn gen_colboxes(
         if bone.children.len() != 0 {
             let (descendents, links) = gen_colboxes(
                 &bone.children,
-                transform,
+                bone.transform.clone(), // transform,
                 colbox_index,
                 hurtboxes
             );
