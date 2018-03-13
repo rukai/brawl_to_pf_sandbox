@@ -3,8 +3,9 @@ use std::fs;
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
 use treeflection::context_vec::ContextVec;
-use brawllib_rs;
-use brawllib_rs::parse::{SectionData, ArcChildData};
+use brawllib_rs::fighter::Fighter as BrawlFighter;
+use brawllib_rs::arc::ArcChildData;
+use brawllib_rs::sakurai::SectionData;
 use brawllib_rs::bres::BresChildData;
 use brawllib_rs::chr0::Chr0;
 use brawllib_rs::mdl0::bones::Bone;
@@ -14,19 +15,32 @@ use cgmath::{Matrix4, Zero};
 use action_map::action_name_to_indexes;
 
 pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
-    // TODO: replace files with mod_path
-    // TODO: use mod path as package name
+    let mod_fighter_dir = if let &Some(ref mod_path) = &mod_path {
+        if let Ok(dir) = fs::read_dir(format!("data/{}/fighter", mod_path)) {
+            Some(dir)
+        } else {
+            println!("Mod directory '{}' does not exist.", mod_path);
+            return;
+        }
+    } else {
+        None
+    };
+
     match fs::read_dir("data/brawl/fighter") {
         Ok(fighter_dir) => {
-            let brawl_fighters = brawllib_rs::fighters(fighter_dir);
+            let brawl_fighters = BrawlFighter::load(fighter_dir, mod_fighter_dir, true);
 
-            let mut package = Package::open_or_generate("brawl").unwrap();
+            let mut package = if let Some(name) = mod_path.clone() {
+                Package::open_or_generate(&name).unwrap()
+            } else {
+                Package::open_or_generate("brawl").unwrap()
+            };
             package.fighters.clear();
 
             for brawl_fighter in brawl_fighters {
-                if export_fighters.contains(&brawl_fighter.cased_fighter_name.to_lowercase()) || export_fighters.contains(&String::from("all")) {
+                if export_fighters.contains(&brawl_fighter.cased_name.to_lowercase()) || export_fighters.contains(&String::from("all")) {
                     let mut fighter = Fighter::default();
-                    fighter.name = brawl_fighter.cased_fighter_name.clone();
+                    fighter.name = brawl_fighter.cased_name.clone();
 
                     let mut hurt_boxes = vec!();
 
@@ -115,7 +129,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                         match &bres_child.data {
                                             &BresChildData::Bres (ref model) => {
                                                 for model_child in model.children.iter() {
-                                                    if model_child.name == format!("Fit{}00", brawl_fighter.cased_fighter_name) {
+                                                    if model_child.name == format!("Fit{}00", brawl_fighter.cased_name) {
                                                         match &model_child.data {
                                                             &BresChildData::Mdl0 (ref model) => {
                                                                 first_bone = model.bones.as_ref();
@@ -212,11 +226,11 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                         }
                     }
 
-                    package.fighters.push(brawl_fighter.cased_fighter_name, fighter);
+                    package.fighters.push(brawl_fighter.cased_name, fighter);
                 }
             }
 
-            package.meta.title = String::from("Brawl");
+            package.meta.title = mod_path.unwrap_or(String::from("Brawl"));
             package.save();
         }
         Err(_) => {
