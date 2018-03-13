@@ -10,6 +10,7 @@ enum_traits = "0.3"
 pf_sandbox = { path = "/home/rubic/Projects/Smash/pf_sandbox/pf_sandbox/pf_sandbox" }
 ref_slice = "1"
 treeflection = "0.1"
+getopts = "0.2"
 
 [patch.crates-io]
 gilrs = { git = "https://gitlab.com/rukai/gilrs", branch = "pf_sandbox2" }
