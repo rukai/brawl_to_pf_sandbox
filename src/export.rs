@@ -239,10 +239,11 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
     }
 }
 
-// Hurtboxes are long, starting at the referenced bones parent stretched to the referenced bone.
+// Hurtboxes are long, starting at the referenced bone stretched to the child bone (appears to be the last child?)
+// Hurtboxes also have an offset which I dont understand yet.
 // Hitboxes are circle at the bone point (appear long because PM debug mode uses interpolation with the previous frames hitbox)
-// Currently creates a single colbox for every bone, creating links between them. (This is nice as
-// it means we have a nicer 'model' to tweak/animate with.
+//
+// We create two linked colboxes for each bone.
 // TODO: Need to take hitbox from previous frame and interpolate into this frame as an extra ColBox.
 //       Can probably call gen_colboxes on current_frame and prev_frame then add in the interpolation of the previous frames hitboxes.
 
