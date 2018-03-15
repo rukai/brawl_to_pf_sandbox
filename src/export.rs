@@ -39,6 +39,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
             for brawl_fighter in brawl_fighters {
                 if export_fighters.contains(&brawl_fighter.cased_name.to_lowercase()) || export_fighters.contains(&String::from("all")) {
+                    info!("starting export fighter: {}", brawl_fighter.cased_name);
                     let mut fighter = Fighter::default();
                     fighter.name = brawl_fighter.cased_name.clone();
 
@@ -118,7 +119,6 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     // locate bones
                     let mut first_bone: Option<&Bone> = None;
                     if let Some(model) = brawl_fighter.models.get(0) {
-                        println!("{:#?}", model.name);
                         for sub_arc in model.children.iter() {
                             match &sub_arc.data {
                                 &ArcChildData::Arc (_) => {
