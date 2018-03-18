@@ -10,7 +10,7 @@ use brawllib_rs::bres::BresChildData;
 use brawllib_rs::chr0::Chr0;
 use brawllib_rs::mdl0::bones::Bone;
 use brawllib_rs::misc_section::HurtBox as BrawlHurtBox;
-use cgmath::{Matrix4, Zero};
+use cgmath::{Matrix4, SquareMatrix};
 
 use action_map::action_name_to_indexes;
 
@@ -199,16 +199,16 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     if let Some(first_bone) = first_bone {
                         for chr0 in chr0s {
                             let mut frames = ContextVec::new();
-                            for i in 0..chr0.num_frames {
-                                let mut frame = ActionFrame::default();
-
-                                // TODO: use frame to create animation data, parse to colboxes or something
+                            for frame in 0..chr0.num_frames {
+                                let mut first_bone = first_bone.clone();
+                                apply_chr0_to_bones(&mut first_bone, Matrix4::<f32>::identity(), chr0, frame as usize);
                                 let (colboxes, links) = gen_colboxes(
-                                    first_bone,
-                                    Matrix4::<f32>::zero(),
+                                    &first_bone,
                                     -1, // starts with no parent
-                                    &hurt_boxes
+                                    &hurt_boxes,
                                 );
+
+                                let mut frame = ActionFrame::default();
                                 frame.colboxes = ContextVec::from_vec(colboxes);
                                 frame.colbox_links = links;
 
@@ -239,6 +239,19 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
     }
 }
 
+fn apply_chr0_to_bones(bone: &mut Bone, parent_transform: Matrix4<f32>, chr0: &Chr0, frame: usize) {
+    bone.transform = parent_transform;
+    for chr0_child in &chr0.children {
+        if chr0_child.name == bone.name {
+            bone.transform = bone.transform * chr0_child.get_transform(chr0.loop_value, frame);
+        }
+    }
+
+    for child in bone.children.iter_mut() {
+        apply_chr0_to_bones(child, bone.transform, chr0, frame);
+    }
+}
+
 // Hurtboxes are long, starting at the referenced bone stretched to the child bone (appears to be the last child?)
 // Hurtboxes also have an offset which I dont understand yet.
 // Hitboxes are circle at the bone point (appear long because PM debug mode uses interpolation with the previous frames hitbox)
@@ -249,39 +262,30 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
 fn gen_colboxes(
     bone: &Bone,
-    parent_transform: Matrix4<f32>,
     parent_colbox_index: i64,
-    hurtboxes: &[BrawlHurtBox]
-    /* TODO: animation_data */
+    hurtboxes: &[BrawlHurtBox],
 ) -> (Vec<CollisionBox>, Vec<CollisionBoxLink>) {
     let mut colbox_index = parent_colbox_index;
     let mut colboxes = vec!();
     let mut colbox_links = vec!();
 
-    // TODO: Might need this for handling animations? Otherwise just delete it
-    // transform position
-    let _transform = if parent_colbox_index == -1 {
-        bone.gen_transform()
-    } else {
-        parent_transform * bone.gen_transform()
-    };
-
     for hurtbox in hurtboxes {
+        // TODO: HurtBox.stretch
         // create hurtbox
         if bone.index == hurtbox.bone_index as i32 {
+            let transform = bone.transform * Matrix4::<f32>::from_translation(hurtbox.offset);
             colboxes.push(CollisionBox {
-                //point: (transform.w.x, transform.w.y),
-                point: (bone.transform.w.x + hurtbox.offset.x, bone.transform.w.y + hurtbox.offset.y), // TODO: pretty sure these should be applied via a matrix, so the translations are orientated correctly
+                point: (transform.w.z, transform.w.y),
                 radius: hurtbox.radius,
                 role: CollisionBoxRole::Hurt (HurtBox::default()),
             });
 
             colbox_index += 1;
 
-            if let Some(first_child_bone) = bone.children.get(bone.children.len()-1) { // TODO: This is weird but seems to work, maybe I need to do it for all children instead? Maybe there is a value that says which child to use.
+            if let Some(last_child_bone) = bone.children.get(bone.children.len()-1) { // TODO: This is weird but seems to work, maybe I need to do it for all children instead? Maybe there is a value that says which child to use.
+            let child_transform = last_child_bone.transform * Matrix4::<f32>::from_translation(hurtbox.offset);
                 colboxes.push(CollisionBox {
-                    //point: (transform.w.x, transform.w.y),
-                    point: (first_child_bone.transform.w.x + hurtbox.offset.x, first_child_bone.transform.w.y + hurtbox.offset.y),
+                    point: (child_transform.w.z, child_transform.w.y),
                     radius: hurtbox.radius,
                     role: CollisionBoxRole::Hurt (HurtBox::default()),
                 });
@@ -304,9 +308,8 @@ fn gen_colboxes(
     for child in bone.children.iter() {
         let (descendents, links) = gen_colboxes(
             child,
-            bone.transform.clone(), // transform,
             colbox_index,
-            hurtboxes
+            hurtboxes,
         );
         colbox_index += descendents.len() as i64;
         colboxes.extend(descendents);
