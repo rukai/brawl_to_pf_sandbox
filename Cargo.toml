@@ -13,6 +13,7 @@ treeflection = "0.1"
 getopts = "0.2"
 env_logger = "0.5"
 log = "0.4"
+noisy_float = "0.1"
 
 [patch.crates-io]
 gilrs = { git = "https://gitlab.com/rukai/gilrs", branch = "pf_sandbox2" }
