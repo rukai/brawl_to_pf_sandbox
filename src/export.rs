@@ -7,6 +7,8 @@ use brawllib_rs::high_level_fighter::HighLevelFighter;
 use brawllib_rs::fighter::Fighter as BrawlFighter;
 use noisy_float::prelude::*;
 
+use cgmath::Matrix4;
+
 use action_map::action_name_to_indexes;
 
 pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
@@ -102,33 +104,33 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     for hl_action in hl_fighter.actions {
                         let mut frames = ContextVec::new();
                         for hl_frame in hl_action.frames {
-                            // Hurtboxes are long, starting at the referenced bone stretched to the child bone (appears to be the last child?)
-                            // We create two linked colboxes for each hurtbox
+                            // https://smashboards.com/threads/all-aboard-the-pain-train-hurtboxes.301220/
+                            // Hurtboxes like hitboxes have a reference to a single bone that determines its position + an offset vector.
+                            // However hurtboxes have radius and stretch values that give them the (usually) cylindrical shape.
+                            // We create two linked colboxes for each hurtbox, this is not accurate but is the best we can do.
                             let mut colboxes = vec!();
                             let mut colbox_links = vec!();
                             let mut hurt_boxes = hl_frame.hurt_boxes.clone();
-                            hurt_boxes.sort_by_key(|hurt_box|
-                                // TODO: might be able to get more exact, by individually checking both start and end
-                                // But I want to fix the wonky animation bug first, so I can properly evaluate if this works.
-                                n32(
-                                    if let Some(end) = hurt_box.end {
-                                        (hurt_box.start.z + end.z) / 2.0
-                                    } else {
-                                        hurt_box.start.z
-                                    }
-                                )
-                            );
+                            let mut render_order = vec!();
+
                             for hurt_box in hurt_boxes {
+                                let transform = hurt_box.bone_matrix * Matrix4::<f32>::from_translation(hurt_box.hurt_box.offset);
+
                                 colboxes.push(CollisionBox {
-                                    point: (hurt_box.start.x, hurt_box.start.y),
-                                    radius: hurt_box.radius,
+                                    point: (transform.w.z, transform.w.y),
+                                    radius: hurt_box.hurt_box.radius, // TODO: radius is not accurate, needs to take Z offset into account; however it certainly looks fine, so eh
                                     role: CollisionBoxRole::Hurt (HurtBox::default()),
                                 });
 
-                                if let Some(end) = hurt_box.end {
+                                // TODO: Works well when there are two stretch offsets, if there are three then it will likely be wonky.
+                                //       Maybe use a heuristic for using a single colbox with custom radius if there is a large 3rd offset.
+                                //       If this isnt actually an issue just delete comment
+                                let s = hurt_box.hurt_box.stretch;
+                                if s.x != 0.0 || s.y != 0.0 || s.z != 0.0 { // If there are no stretch offsets we only need one colbox
+                                    let stretch_transform = transform * Matrix4::<f32>::from_translation(s);
                                     colboxes.push(CollisionBox {
-                                        point: (end.x, end.y),
-                                        radius: hurt_box.radius,
+                                        point: (stretch_transform.w.z, stretch_transform.w.y),
+                                        radius: hurt_box.hurt_box.radius,
                                         role: CollisionBoxRole::Hurt (HurtBox::default()),
                                     });
 
@@ -137,8 +139,21 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                         two: colboxes.len() - 1,
                                         link_type: LinkType::MeldFirst,
                                     });
+
+                                    render_order.push((
+                                        RenderOrder::Link(colbox_links.len() - 1),
+                                        (transform.w.x + stretch_transform.w.x) / 2.0, // average of the z values for both colboxes
+                                    ));
+                                }
+                                else {
+                                    render_order.push((
+                                        RenderOrder::Colbox(colboxes.len() - 1),
+                                        transform.w.x,
+                                    ));
                                 }
                             }
+
+                            render_order.sort_by_key(|x| n32(x.1));
 
                             // TODO: Hitboxes
 
@@ -146,6 +161,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             let mut frame = ActionFrame::default();
                             frame.colboxes = ContextVec::from_vec(colboxes);
                             frame.colbox_links = colbox_links;
+                            frame.render_order = render_order.iter().map(|x| x.0.clone()).collect();
 
                             frames.push(frame);
                         }
