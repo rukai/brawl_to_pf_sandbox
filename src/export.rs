@@ -5,6 +5,7 @@ use pf_sandbox::fighter::*;
 use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::HighLevelFighter;
 use brawllib_rs::fighter::Fighter as BrawlFighter;
+use brawllib_rs::script_ast::EdgeSlide;
 use noisy_float::prelude::*;
 
 use cgmath::Matrix4;
@@ -43,7 +44,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
                     let attributes = hl_fighter.attributes;
                     fighter.air_jumps = attributes.num_jumps as u64 - 1;
-                    fighter.weight = attributes.weight;
+                    fighter.weight = attributes.weight / 100.0;
                     fighter.gravity = -attributes.gravity;
                     fighter.terminal_vel = -attributes.term_vel;
                     fighter.fastfall_terminal_vel = -attributes.fastfall_velocity;
@@ -121,10 +122,9 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             // We create two linked colboxes for each hurtbox, this is not accurate but is the best we can do.
                             let mut colboxes = vec!();
                             let mut colbox_links = vec!();
-                            let mut hurt_boxes = hl_frame.hurt_boxes.clone();
                             let mut render_order = vec!();
 
-                            for hurt_box in hurt_boxes {
+                            for hurt_box in hl_frame.hurt_boxes {
                                 let transform = hurt_box.bone_matrix * Matrix4::<f32>::from_translation(hurt_box.hurt_box.offset);
 
                                 colboxes.push(CollisionBox {
@@ -164,6 +164,44 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 }
                             }
 
+                            for hit_box in hl_frame.hit_boxes {
+                                let hb = hit_box.hit_box;
+                                colboxes.push(CollisionBox {
+                                    point: (hit_box.position.z, hit_box.position.y),
+                                    radius: hb.size,
+                                    role: CollisionBoxRole::Hit (HitBox {
+                                        shield_damage:     hb.shield_damage as f32,
+                                        damage:            hb.damage as f32,
+                                        bkb:               hb.bkb as f32,
+                                        kbg:               hb.kbg as f32 / 100.0,
+                                        angle:             hb.trajectory as f32,
+                                        hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
+                                        enable_clang:      hb.clang,
+                                        enable_rebound:    hb.clang, // TODO: are these the same thing?
+                                        effect:            HitboxEffect::None,
+                                    }),
+                                });
+                            }
+
+                            for hit_box in hl_frame.special_hit_boxes {
+                                let hb = hit_box.hit_box.hitbox_args;
+                                colboxes.push(CollisionBox {
+                                    point: (hit_box.position.z, hit_box.position.y),
+                                    radius: hb.size,
+                                    role: CollisionBoxRole::Hit (HitBox {
+                                        shield_damage:     hb.shield_damage as f32,
+                                        damage:            hb.damage as f32,
+                                        bkb:               hb.bkb as f32,
+                                        kbg:               hb.kbg as f32 / 100.0,
+                                        angle:             hb.trajectory as f32,
+                                        hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
+                                        enable_clang:      hb.clang,
+                                        enable_rebound:    hb.clang, // TODO: are these the same thing?
+                                        effect:            HitboxEffect::None,
+                                    }),
+                                });
+                            }
+
                             render_order.sort_by_key(|x| n32(x.1));
 
                             // TODO: Hitboxes
@@ -177,6 +215,12 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             // TODO: The offset returned by apply_chr0_to_bones doesnt seem to change, figure out why
                             //frame.set_x_vel = hl_frame.animation_velocity.map(|vel| vel.z);
                             //frame.set_y_vel = hl_frame.animation_velocity.map(|vel| vel.y);
+                            frame.ledge_cancel = match hl_frame.edge_slide {
+                                | EdgeSlide::Airbourne
+                                | EdgeSlide::SlideOff    => true,
+                                | EdgeSlide::StayOn
+                                | EdgeSlide::Unknown (_) => false
+                            };
 
                             frames.push(frame);
                         }
