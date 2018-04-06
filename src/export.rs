@@ -165,46 +165,98 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             }
 
                             for hit_box in hl_frame.hit_boxes {
-                                let hb = hit_box.hit_box;
-                                colboxes.push(CollisionBox {
-                                    point: (hit_box.position.z, hit_box.position.y),
-                                    radius: hb.size,
-                                    role: CollisionBoxRole::Hit (HitBox {
-                                        shield_damage:     hb.shield_damage as f32,
-                                        damage:            hb.damage as f32,
-                                        bkb:               hb.bkb as f32,
-                                        kbg:               hb.kbg as f32 / 100.0,
-                                        angle:             hb.trajectory as f32,
-                                        hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
-                                        enable_clang:      hb.clang,
-                                        enable_rebound:    hb.clang, // TODO: are these the same thing?
-                                        effect:            HitboxEffect::None,
-                                    }),
+                                let args = hit_box.next_args;
+                                let role = CollisionBoxRole::Hit (HitBox {
+                                    shield_damage:     args.shield_damage as f32,
+                                    damage:            args.damage as f32,
+                                    bkb:               args.bkb as f32,
+                                    kbg:               args.kbg as f32 / 100.0,
+                                    angle:             args.trajectory as f32,
+                                    hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
+                                    enable_clang:      args.clang,
+                                    enable_rebound:    args.clang, // TODO: are these the same thing?
+                                    effect:            HitboxEffect::None,
                                 });
+
+                                colboxes.push(CollisionBox {
+                                    point: (hit_box.next.z, hit_box.next.y),
+                                    radius: args.size,
+                                    role: role.clone()
+                                });
+
+                                if let Some(prev) = hit_box.prev {
+                                    colboxes.push(CollisionBox {
+                                        point: (prev.z, prev.y),
+                                        radius: args.size,
+                                        role // TODO: is role always the same? if so remove prev_args from HighLevelHitBox
+                                    });
+
+                                    colbox_links.push(CollisionBoxLink {
+                                        one: colboxes.len() - 2,
+                                        two: colboxes.len() - 1,
+                                        link_type: LinkType::MeldFirst,
+                                    });
+
+                                    render_order.push((
+                                        RenderOrder::Link(colbox_links.len() - 1),
+                                        -99999.0
+                                    ));
+                                }
+                                else {
+                                    render_order.push((
+                                        RenderOrder::Colbox(colboxes.len() - 1),
+                                        -99999.0
+                                    ));
+                                }
                             }
 
                             for hit_box in hl_frame.special_hit_boxes {
-                                let hb = hit_box.hit_box.hitbox_args;
-                                colboxes.push(CollisionBox {
-                                    point: (hit_box.position.z, hit_box.position.y),
-                                    radius: hb.size,
-                                    role: CollisionBoxRole::Hit (HitBox {
-                                        shield_damage:     hb.shield_damage as f32,
-                                        damage:            hb.damage as f32,
-                                        bkb:               hb.bkb as f32,
-                                        kbg:               hb.kbg as f32 / 100.0,
-                                        angle:             hb.trajectory as f32,
-                                        hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
-                                        enable_clang:      hb.clang,
-                                        enable_rebound:    hb.clang, // TODO: are these the same thing?
-                                        effect:            HitboxEffect::None,
-                                    }),
+                                let args = hit_box.next_args.hitbox_args;
+                                let role = CollisionBoxRole::Hit (HitBox {
+                                    shield_damage:     args.shield_damage as f32,
+                                    damage:            args.damage as f32,
+                                    bkb:               args.bkb as f32,
+                                    kbg:               args.kbg as f32 / 100.0,
+                                    angle:             args.trajectory as f32,
+                                    hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
+                                    enable_clang:      args.clang,
+                                    enable_rebound:    args.clang, // TODO: are these the same thing?
+                                    effect:            HitboxEffect::None,
                                 });
+
+                                colboxes.push(CollisionBox {
+                                    point: (hit_box.next.z, hit_box.next.y),
+                                    radius: args.size,
+                                    role: role.clone()
+                                });
+
+                                if let Some(prev) = hit_box.prev {
+                                    colboxes.push(CollisionBox {
+                                        point: (prev.z, prev.y),
+                                        radius: args.size,
+                                        role // TODO: is role always the same? if so remove prev_args from HighLevelHitBox
+                                    });
+
+                                    colbox_links.push(CollisionBoxLink {
+                                        one: colboxes.len() - 2,
+                                        two: colboxes.len() - 1,
+                                        link_type: LinkType::MeldFirst,
+                                    });
+
+                                    render_order.push((
+                                        RenderOrder::Link(colbox_links.len() - 1),
+                                        -99999.0
+                                    ));
+                                }
+                                else {
+                                    render_order.push((
+                                        RenderOrder::Colbox(colboxes.len() - 1),
+                                        -99999.0
+                                    ));
+                                }
                             }
 
                             render_order.sort_by_key(|x| n32(x.1));
-
-                            // TODO: Hitboxes
 
                             // just modify a default frame because we are lazy
                             let mut frame = ActionFrame::default();
