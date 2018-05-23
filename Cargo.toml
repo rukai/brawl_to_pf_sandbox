@@ -14,10 +14,3 @@ getopts = "0.2"
 env_logger = "0.5"
 log = "0.4"
 noisy_float = "0.1"
-
-[patch.crates-io]
-gilrs = { git = "https://gitlab.com/rukai/gilrs", branch = "pf_sandbox2" }
-vulkano = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
-vulkano-win = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
-vulkano-shader-derive = { git = "https://github.com/rukai/vulkano", branch = "pf_sandbox2" }
-vulkano_text = { git = "https://github.com/rukai/vulkano-text", branch = "pf_sandbox2" }
