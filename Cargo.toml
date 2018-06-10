@@ -4,10 +4,13 @@ version = "0.1.0"
 authors = ["Rukai <rubickent@gmail.com>"]
 
 [dependencies]
-brawllib_rs = { path = "../brawllib_rs" }
+# TODO: get brawllib_rs and pf_sandbox from crates.io.
+#       need to change all their dependencies to use crates.io
+#       waiting on three-rs, gilrs, winit and vulkano
+brawllib_rs = { git = "https://github.com/rukai/brawllib_rs" }
 cgmath = "0.16"
 enum_traits = "0.3"
-pf_sandbox = { path = "/home/rubic/Projects/Smash/pf_sandbox/pf_sandbox/pf_sandbox" }
+pf_sandbox = { git = "https://github.com/rukai/PF_Sandbox" }
 ref_slice = "1"
 treeflection = "0.1"
 getopts = "0.2"
