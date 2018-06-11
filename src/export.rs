@@ -264,6 +264,11 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             frame.colbox_links = colbox_links;
                             frame.render_order = render_order.iter().map(|x| x.0.clone()).collect();
                             frame.ledge_grab_box = ledge_grab_box.clone(); // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
+                            frame.ecb.left = hl_frame.ecb.left;
+                            frame.ecb.right = hl_frame.ecb.right;
+                            frame.ecb.top = hl_frame.ecb.top;
+                            frame.ecb.bottom = hl_frame.ecb.bottom;
+
                             // TODO: The offset returned by apply_chr0_to_bones doesnt seem to change, figure out why
                             //frame.set_x_vel = hl_frame.animation_velocity.map(|vel| vel.z);
                             //frame.set_y_vel = hl_frame.animation_velocity.map(|vel| vel.y);
