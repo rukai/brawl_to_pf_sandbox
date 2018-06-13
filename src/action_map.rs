@@ -235,7 +235,7 @@ pub fn action_name_to_indexes(name: &str) -> Vec<usize> {
         "DamageAir2" => vec!(),
         "DamageAir3" => vec!(),
         "DamageFlyHi" => vec!(),
-        "DamageFlyLw" => vec!(),
+        "DamageFlyLw" => vec!(Action::ShieldBreakFall), // TODO: I just took a random guess here, figure out the correct one
         "DamageFlyN" => vec!(Action::DamageFly),
         "DamageFlyRoll" => vec!(),
         "DamageFlyTop" => vec!(),
@@ -268,7 +268,7 @@ pub fn action_name_to_indexes(name: &str) -> Vec<usize> {
         "FuraFura" => vec!(Action::Stun),
         "FuraFuraEnd" => vec!(),
         "FuraFuraStartD" => vec!(),
-        "FuraFuraStartU" => vec!(),
+        "FuraFuraStartU" => vec!(Action::ShieldBreakGetup),
         "FuraSleepEnd" => vec!(),
         "FuraSleepLoop" => vec!(),
         "FuraSleepStart" => vec!(),
