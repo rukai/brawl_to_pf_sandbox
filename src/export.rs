@@ -2,6 +2,7 @@ use std::fs;
 
 use pf_sandbox::package::Package;
 use pf_sandbox::fighter::*;
+use pf_sandbox::stage::Stage;
 use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::HighLevelFighter;
 use brawllib_rs::fighter::Fighter as BrawlFighter;
@@ -29,11 +30,12 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
             let brawl_fighters = BrawlFighter::load(fighter_dir, mod_fighter_dir, true);
 
             let mut package = if let Some(name) = mod_path.clone() {
-                Package::open_or_generate(&name).unwrap()
+                Package::blank(&name)
             } else {
-                Package::open_or_generate("brawl").unwrap()
+                Package::blank("brawl")
             };
             package.fighters.clear();
+            package.stages.push(String::from("Stage"), Stage::default());
 
             for brawl_fighter in brawl_fighters {
                 if export_fighters.contains(&brawl_fighter.cased_name.to_lowercase()) || export_fighters.contains(&String::from("all")) {
@@ -73,7 +75,17 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     fighter.forward_roll = true;
                     fighter.backward_roll = true;
                     fighter.spot_dodge = true;
-                    fighter.lcancel = None; // TODO: handle for PM
+                    // Not always correct, but assume that psa modded characters are from PM
+                    fighter.aerialdodge_mult = if brawl_fighter.modded_by_psa { 3.0 } else { 0.0 };
+                    fighter.lcancel = if brawl_fighter.modded_by_psa {
+                        Some(LCancel {
+                            active_window: 7,
+                            frame_skip: 1,
+                            normal_land: false,
+                        })
+                    } else {
+                        None
+                    };
                     fighter.shield = Some(Shield {
                         // TODO: shield_strength !??!?!
                         stick_lock: false,
