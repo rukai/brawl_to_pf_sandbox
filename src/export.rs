@@ -224,25 +224,39 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
                             render_order.sort_by_key(|x| n32(x.1));
 
-                            // just modify a default frame because we are lazy
-                            let mut frame = ActionFrame::default();
-                            frame.colboxes = ContextVec::from_vec(colboxes);
-                            frame.colbox_links = colbox_links;
-                            frame.render_order = render_order.iter().map(|x| x.0.clone()).collect();
-                            frame.ledge_grab_box = ledge_grab_box.clone(); // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
-                            frame.ecb.left = hl_frame.ecb.left;
-                            frame.ecb.right = hl_frame.ecb.right;
-                            frame.ecb.top = hl_frame.ecb.top;
-                            frame.ecb.bottom = hl_frame.ecb.bottom;
-
-                            // TODO: The offset returned by apply_chr0_to_bones doesnt seem to change, figure out why
-                            //frame.set_x_vel = hl_frame.animation_velocity.map(|vel| vel.z);
-                            //frame.set_y_vel = hl_frame.animation_velocity.map(|vel| vel.y);
-                            frame.ledge_cancel = match hl_frame.edge_slide {
+                            let ledge_cancel = match hl_frame.edge_slide {
                                 | EdgeSlide::Airbourne
                                 | EdgeSlide::SlideOff    => true,
                                 | EdgeSlide::StayOn
                                 | EdgeSlide::Unknown (_) => false
+                            };
+
+                            let ecb = ECB {
+                                left:   hl_frame.ecb.left,
+                                right:  hl_frame.ecb.right,
+                                top:    hl_frame.ecb.top,
+                                bottom: hl_frame.ecb.bottom,
+                            };
+
+                            let frame = ActionFrame {
+                                ecb,
+                                colbox_links,
+                                ledge_cancel,
+                                colboxes: ContextVec::from_vec(colboxes),
+                                render_order: render_order.iter().map(|x| x.0.clone()).collect(),
+                                ledge_grab_box: ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
+                                item_hold_x: 4.0,
+                                item_hold_y: 11.0,
+                                grab_hold_x: 4.0,
+                                grab_hold_y: 11.0,
+                                // TODO: The offset returned by apply_chr0_to_bones doesnt seem to change, figure out why
+                                //set_x_vel: hl_frame.animation_velocity.map(|vel| vel.z),
+                                //set_y_vel: hl_frame.animation_velocity.map(|vel| vel.y),
+                                set_x_vel: None,
+                                set_y_vel: None,
+                                pass_through: true,
+                                use_platform_angle: false,
+                                force_hitlist_reset: hl_frame.hitlist_reset,
                             };
 
                             frames.push(frame);

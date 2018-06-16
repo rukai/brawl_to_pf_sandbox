@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "brawllib_rs"
 version = "0.1.0"
-source = "git+https://github.com/rukai/brawllib_rs#204b1ee58a03bd2a200ab7c05bf8455120125d70"
+source = "git+https://github.com/rukai/brawllib_rs#d0cba1665714d573cf66863614f5d3ed34866f52"
 dependencies = [
  "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2044,7 +2044,7 @@ dependencies = [
 [[package]]
 name = "winit"
 version = "0.15.1"
-source = "git+https://github.com/tomaka/winit#1b74822cfc0cb7fba4ed4940a3faae9499fcda95"
+source = "git+https://github.com/tomaka/winit#e7a8efcfa0b0b3b6518fb9f11541cd5a8895965f"
 dependencies = [
  "android_glue 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "cocoa 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
