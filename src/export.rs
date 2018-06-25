@@ -149,7 +149,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 //       Maybe use a heuristic for using a single colbox with custom radius if there is a large 3rd offset.
                                 //       If this isnt actually an issue just delete comment
                                 let s = hurt_box.hurt_box.stretch;
-                                if s.x != 0.0 || s.y != 0.0 || s.z != 0.0 { // If there are no stretch offsets we only need one colbox
+                                let tuple = if s.x != 0.0 || s.y != 0.0 || s.z != 0.0 { // If there are no stretch offsets we only need one colbox
                                     let stretch_transform = transform * Matrix4::<f32>::from_translation(s);
                                     colboxes.push(CollisionBox {
                                         point: (stretch_transform.w.z, stretch_transform.w.y),
@@ -163,16 +163,22 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                         link_type: LinkType::MeldFirst,
                                     });
 
-                                    render_order.push((
+                                    (
                                         RenderOrder::Link(colbox_links.len() - 1),
                                         (transform.w.x + stretch_transform.w.x) / 2.0, // average of the z values for both colboxes
-                                    ));
-                                }
-                                else {
-                                    render_order.push((
+                                    )
+                                } else {
+                                    (
                                         RenderOrder::Colbox(colboxes.len() - 1),
                                         transform.w.x,
-                                    ));
+                                    )
+                                };
+
+                                if tuple.1.is_nan() {
+                                    error!("Skipped render_order element, value was NaN");
+                                }
+                                else {
+                                    render_order.push(tuple);
                                 }
                             }
 
