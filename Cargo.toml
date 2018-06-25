@@ -8,7 +8,6 @@ authors = ["Rukai <rubickent@gmail.com>"]
 #       need to change all their dependencies to use crates.io
 #       waiting on three-rs, gilrs, winit and vulkano
 brawllib_rs = { git = "https://github.com/rukai/brawllib_rs" }
-#brawllib_rs = { path = "/home/rubic/Projects/Smash/pf_sandbox/brawl_exporter/brawllib_rs" }
 cgmath = "0.16"
 enum_traits = "0.3"
 pf_sandbox = { git = "https://github.com/rukai/PF_Sandbox" }
@@ -18,3 +17,6 @@ getopts = "0.2"
 env_logger = "0.5"
 log = "0.4"
 noisy_float = "0.1"
+
+[profile.release]
+debug-assertions = true
