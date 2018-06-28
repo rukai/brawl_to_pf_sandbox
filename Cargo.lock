@@ -103,7 +103,7 @@ dependencies = [
 name = "brawl_exporter"
 version = "0.1.0"
 dependencies = [
- "brawllib_rs 0.1.0 (git+https://github.com/rukai/brawllib_rs)",
+ "brawllib_rs 0.1.0",
  "cgmath 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum_traits 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -118,7 +118,6 @@ dependencies = [
 [[package]]
 name = "brawllib_rs"
 version = "0.1.0"
-source = "git+https://github.com/rukai/brawllib_rs#2d6672dd3b19ab014501a078ecfe29731f4c695d"
 dependencies = [
  "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1083,7 +1082,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "pf_sandbox"
 version = "0.1.1"
-source = "git+https://github.com/rukai/PF_Sandbox#ed8f9fbf0468282e8287b437cf97847455152826"
+source = "git+https://github.com/rukai/PF_Sandbox#f6f0997a4d8b4d4043742c79e71173fde04d8686"
 dependencies = [
  "bincode 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2116,7 +2115,6 @@ dependencies = [
 "checksum bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d0c54bb8f454c567f21197eefcdbf5679d0bd99f2ddbe52e84c77061952e6789"
 "checksum block 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
 "checksum block-buffer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a076c298b9ecdb530ed9d967e74a6027d6a7478924520acddcddc24c1c8ab3ab"
-"checksum brawllib_rs 0.1.0 (git+https://github.com/rukai/brawllib_rs)" = "<none>"
 "checksum build_const 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
 "checksum byte-tools 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "560c32574a12a89ecd91f5e742165893f86e3ab98d21f8ea548658eb9eef5f40"
 "checksum byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "74c0b906e9446b0a2e4f760cdb3fa4b2c48cdc6db8766a845c54b6ff063fd2e9"

@@ -261,8 +261,8 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 set_x_vel: None,
                                 set_y_vel: None,
                                 pass_through: true,
-                                use_platform_angle: false,
-                                force_hitlist_reset: hl_frame.hitlist_reset,
+                                use_platform_angle: hl_frame.slope_contour_full.is_some(),
+                                force_hitlist_reset: hl_frame.hitlist_reset
                             };
 
                             frames.push(frame);
