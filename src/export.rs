@@ -6,13 +6,16 @@ use pf_sandbox::stage::Stage;
 use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::HighLevelFighter;
 use brawllib_rs::fighter::Fighter as BrawlFighter;
-use brawllib_rs::script_ast::EdgeSlide;
+use brawllib_rs::script_ast::{EdgeSlide, AngleFlip};
 use noisy_float::prelude::*;
 
 use cgmath::Matrix4;
 
 use action_map::action_name_to_indexes;
 
+/// Export all fighters listed in export_fighters
+/// if mod_path is Some then mod files overwrite vanilla files
+/// Not always correct, but assumes that psa modded characters are from PM
 pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
     let mod_fighter_dir = if let &Some(ref mod_path) = &mod_path {
         if let Ok(dir) = fs::read_dir(format!("data/{}/fighter", mod_path)) {
@@ -75,7 +78,6 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     fighter.forward_roll = true;
                     fighter.backward_roll = true;
                     fighter.spot_dodge = true;
-                    // Not always correct, but assume that psa modded characters are from PM
                     fighter.aerialdodge_mult = if brawl_fighter.modded_by_psa { 3.0 } else { 0.0 };
                     fighter.lcancel = if brawl_fighter.modded_by_psa {
                         Some(LCancel {
@@ -184,16 +186,19 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
                             for hit_box in hl_frame.hit_boxes {
                                 let values = hit_box.next_values;
+                                let enable_reverse_hit = if let AngleFlip::AwayFromAttacker = values.angle_flipping { true } else { false };
+                                let angle = if let AngleFlip::AttackerDirReverse = values.angle_flipping { 180 - values.trajectory } else { values.trajectory } as f32;
                                 let role = CollisionBoxRole::Hit (HitBox {
-                                    shield_damage:     values.shield_damage as f32,
-                                    damage:            values.damage as f32,
-                                    bkb:               values.bkb as f32,
-                                    kbg:               values.kbg as f32 / 100.0,
-                                    angle:             values.trajectory as f32,
-                                    hitstun:           HitStun::default(), // TODO: tweak to brawl/pm values
-                                    enable_clang:      values.clang,
-                                    enable_rebound:    values.clang, // TODO: are these the same thing?
-                                    effect:            HitboxEffect::None,
+                                    shield_damage:      values.shield_damage as f32,
+                                    damage:             values.damage as f32,
+                                    bkb:                values.bkb as f32,
+                                    kbg:                values.kbg as f32 / 100.0,
+                                    hitstun:            HitStun::FramesTimesKnockback(0.4),
+                                    enable_clang:       values.clang,
+                                    enable_rebound:     values.clang, // TODO: are these the same thing?
+                                    effect:             HitboxEffect::None,
+                                    enable_reverse_hit,
+                                    angle,
                                 });
 
                                 colboxes.push(CollisionBox {
