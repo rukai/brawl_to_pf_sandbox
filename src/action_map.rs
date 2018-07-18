@@ -1,4 +1,4 @@
-use pf_sandbox::fighter::Action;
+use pf_sandbox_lib::fighter::Action;
 use enum_traits::ToIndex;
 
 pub fn action_name_to_indexes(name: &str) -> Vec<usize> {

@@ -1,8 +1,8 @@
 use std::fs;
 
-use pf_sandbox::package::Package;
-use pf_sandbox::fighter::*;
-use pf_sandbox::stage::Stage;
+use pf_sandbox_lib::package::Package;
+use pf_sandbox_lib::fighter::*;
+use pf_sandbox_lib::stage::Stage;
 use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::HighLevelFighter;
 use brawllib_rs::fighter::Fighter as BrawlFighter;

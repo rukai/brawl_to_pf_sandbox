@@ -4,7 +4,7 @@
              extern crate env_logger;
              extern crate getopts;
              extern crate noisy_float;
-             extern crate pf_sandbox;
+             extern crate pf_sandbox_lib;
              extern crate ref_slice;
              extern crate treeflection;
 #[macro_use] extern crate log;
