@@ -249,10 +249,40 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 bottom: hl_frame.ecb.bottom,
                             };
 
+                            let pass_through = match hl_action.name.as_ref() {
+                                "DamageN1" |
+                                "DamageN2" |
+                                "DamageN3" |
+                                "DamageHi1" |
+                                "DamageHi2" |
+                                "DamageHi3" |
+                                "DamageLw1" |
+                                "DamageLw2" |
+                                "DamageLw3" |
+                                "DamageElec" |
+                                "DamageAir1" |
+                                "DamageAir2" |
+                                "DamageAir3" |
+                                "DamageFlyN" |
+                                "DamageFlyHi" |
+                                "DamageFlyLw" |
+                                "DamageFlyTop" |
+                                "DamageFlyRoll" |
+                                "AttackAirB" |
+                                "AttackAirF" |
+                                "AttackAirN" |
+                                "AttackAirHi" |
+                                "AttackAirLw" |
+                                "EscapeAir"
+                                  => false,
+                                _ => true
+                            };
+
                             let frame = ActionFrame {
                                 ecb,
                                 colbox_links,
                                 ledge_cancel,
+                                pass_through,
                                 colboxes: ContextVec::from_vec(colboxes),
                                 render_order: render_order.iter().map(|x| x.0.clone()).collect(),
                                 ledge_grab_box: ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
@@ -265,7 +295,6 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 //set_y_vel: hl_frame.animation_velocity.map(|vel| vel.y),
                                 set_x_vel: None,
                                 set_y_vel: None,
-                                pass_through: true,
                                 use_platform_angle: hl_frame.slope_contour_full.is_some(),
                                 force_hitlist_reset: hl_frame.hitlist_reset
                             };
