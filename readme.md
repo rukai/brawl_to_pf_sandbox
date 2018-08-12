@@ -13,4 +13,3 @@ Uses [brawllib_rs](https://github.com/rukai/brawllib_rs) to export brawl fighter
 6.  This will take a long time to complete.
 7.  The package has been generated and placed in PF Sandbox's package directory for you.
 8.  Open PF Sandbox and you can now select the exported package.
-9.  The exported package will take a long time to load, so you may want to delete or move fighters you dont want first.
