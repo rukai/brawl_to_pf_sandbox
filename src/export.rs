@@ -11,7 +11,7 @@ use noisy_float::prelude::*;
 
 use cgmath::Matrix4;
 
-use action_map::action_name_to_indexes;
+use crate::action_map::action_name_to_indexes;
 
 /// Export all fighters listed in export_fighters
 /// if mod_path is Some then mod files overwrite vanilla files
