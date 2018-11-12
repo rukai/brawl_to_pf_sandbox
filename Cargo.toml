@@ -13,7 +13,7 @@ pf_sandbox_lib = "0.1"
 ref_slice = "1"
 treeflection = "0.1"
 getopts = "0.2"
-env_logger = "0.5"
+env_logger = "0.6"
 log = "0.4"
 noisy_float = "0.1"
 
