@@ -4,9 +4,9 @@ use pf_sandbox_lib::package::Package;
 use pf_sandbox_lib::fighter::*;
 use pf_sandbox_lib::stage::Stage;
 use treeflection::context_vec::ContextVec;
-use brawllib_rs::high_level_fighter::HighLevelFighter;
+use brawllib_rs::high_level_fighter::{HighLevelFighter, CollisionBoxValues};
 use brawllib_rs::fighter::Fighter as BrawlFighter;
-use brawllib_rs::script_ast::{EdgeSlide, AngleFlip};
+use brawllib_rs::script_ast::{EdgeSlide, AngleFlip, HurtBoxState};
 use noisy_float::prelude::*;
 
 use cgmath::Matrix4;
@@ -140,11 +140,19 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
 
                             for hurt_box in hl_frame.hurt_boxes {
                                 let transform = hurt_box.bone_matrix * Matrix4::<f32>::from_translation(hurt_box.hurt_box.offset);
+                                let role = match hurt_box.state {
+                                    HurtBoxState::Unknown(_) |
+                                    HurtBoxState::Normal => CollisionBoxRole::Hurt(HurtBox::default()),
+                                    HurtBoxState::Invincible => CollisionBoxRole::Invincible,
+                                    HurtBoxState::IntangibleFlashing |
+                                    HurtBoxState::IntangibleNoFlashing |
+                                    HurtBoxState::IntangibleQuickFlashing => CollisionBoxRole::Intangible,
+                                };
 
                                 colboxes.push(CollisionBox {
                                     point: (transform.w.z, transform.w.y),
                                     radius: hurt_box.hurt_box.radius, // TODO: radius is not accurate, needs to take Z offset into account; however it certainly looks fine, so eh
-                                    role: CollisionBoxRole::Hurt (HurtBox::default()),
+                                    role: role.clone(),
                                 });
 
                                 // TODO: Works well when there are two stretch offsets, if there are three then it will likely be wonky.
@@ -156,7 +164,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                     colboxes.push(CollisionBox {
                                         point: (stretch_transform.w.z, stretch_transform.w.y),
                                         radius: hurt_box.hurt_box.radius,
-                                        role: CollisionBoxRole::Hurt (HurtBox::default()),
+                                        role: role,
                                     });
 
                                     colbox_links.push(CollisionBoxLink {
@@ -185,32 +193,38 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             }
 
                             for hit_box in hl_frame.hit_boxes {
-                                let values = hit_box.next_values;
-                                let enable_reverse_hit = if let AngleFlip::AwayFromAttacker = values.angle_flipping { true } else { false };
-                                let angle = if let AngleFlip::AttackerDirReverse = values.angle_flipping { 180 - values.trajectory } else { values.trajectory } as f32;
-                                let role = CollisionBoxRole::Hit (HitBox {
-                                    shield_damage:      values.shield_damage as f32,
-                                    damage:             values.damage as f32,
-                                    bkb:                values.bkb as f32,
-                                    kbg:                values.kbg as f32 / 100.0,
-                                    hitstun:            HitStun::FramesTimesKnockback(0.4),
-                                    enable_clang:       values.clang,
-                                    enable_rebound:     values.clang, // TODO: are these the same thing?
-                                    effect:             HitboxEffect::None,
-                                    enable_reverse_hit,
-                                    angle,
-                                });
+                                let role = match hit_box.next_values {
+                                    CollisionBoxValues::Hit(values) => {
+                                        let enable_reverse_hit = if let AngleFlip::AwayFromAttacker = values.angle_flipping { true } else { false };
+                                        let angle = if let AngleFlip::AttackerDirReverse = values.angle_flipping { 180 - values.trajectory } else { values.trajectory } as f32;
+                                        CollisionBoxRole::Hit (HitBox {
+                                            shield_damage:      values.shield_damage as f32,
+                                            damage:             values.damage as f32,
+                                            bkb:                values.bkb as f32,
+                                            kbg:                values.kbg as f32 / 100.0,
+                                            hitstun:            HitStun::FramesTimesKnockback(0.4),
+                                            enable_clang:       values.clang,
+                                            enable_rebound:     values.clang, // TODO: are these the same thing?
+                                            effect:             HitboxEffect::None,
+                                            enable_reverse_hit,
+                                            angle,
+                                        })
+                                    }
+                                    CollisionBoxValues::Grab (_) => {
+                                        CollisionBoxRole::Grab
+                                    }
+                                };
 
                                 colboxes.push(CollisionBox {
-                                    point: (hit_box.next.z, hit_box.next.y),
-                                    radius: values.size,
+                                    point: (hit_box.next_pos.z, hit_box.next_pos.y),
+                                    radius: hit_box.next_size,
                                     role: role.clone()
                                 });
 
-                                if let Some(prev) = hit_box.prev {
+                                if let Some(prev_pos) = hit_box.prev_pos {
                                     colboxes.push(CollisionBox {
-                                        point: (prev.z, prev.y),
-                                        radius: values.size,
+                                        point: (prev_pos.z, prev_pos.y),
+                                        radius: hit_box.prev_size.unwrap(),
                                         role // TODO: is role always the same? if so remove prev_values from HighLevelHitBox
                                     });
 
