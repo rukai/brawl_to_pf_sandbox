@@ -127,9 +127,10 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     };
 
                     // create fighter actions
-                    for hl_action in hl_fighter.actions {
+                    // The PF Sandbox action is equivalent to the Brawl subaction
+                    for hl_subaction in hl_fighter.subactions {
                         let mut frames = ContextVec::new();
-                        for hl_frame in hl_action.frames {
+                        for hl_frame in hl_subaction.frames {
                             // https://smashboards.com/threads/all-aboard-the-pain-train-hurtboxes.301220/
                             // Hurtboxes like hitboxes have a reference to a single bone that determines its position + an offset vector.
                             // However hurtboxes have radius and stretch values that give them the (usually) cylindrical shape.
@@ -263,7 +264,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 bottom: hl_frame.ecb.bottom,
                             };
 
-                            let pass_through = match hl_action.name.as_ref() {
+                            let pass_through = match hl_subaction.name.as_ref() {
                                 "DamageN1" |
                                 "DamageN2" |
                                 "DamageN3" |
@@ -317,11 +318,11 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                         }
 
                         let action = ActionDef {
-                            iasa: hl_action.iasa as i64,
+                            iasa: hl_subaction.iasa as i64,
                             frames
                         };
 
-                        for index in action_name_to_indexes(&hl_action.name) {
+                        for index in action_name_to_indexes(&hl_subaction.name) {
                             fighter.actions[index] = action.clone();
                         }
                     }
