@@ -7,6 +7,7 @@ use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::{HighLevelFighter, CollisionBoxValues};
 use brawllib_rs::fighter::Fighter as BrawlFighter;
 use brawllib_rs::script_ast::{EdgeSlide, AngleFlip, HurtBoxState};
+use brawllib_rs::script_runner::VelModify as BrawlVelModify;
 use noisy_float::prelude::*;
 
 use cgmath::Matrix4;
@@ -293,24 +294,39 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 _ => true
                             };
 
+                            let x_vel_modify = match hl_frame.x_vel_modify {
+                                BrawlVelModify::Set (vel) => VelModify::Set (vel),
+                                BrawlVelModify::Add (vel) => VelModify::Add (vel),
+                                BrawlVelModify::None      => VelModify::None,
+                            };
+                            let y_vel_modify = match hl_frame.y_vel_modify {
+                                BrawlVelModify::Set (vel) => VelModify::Set (vel),
+                                BrawlVelModify::Add (vel) => VelModify::Add (vel),
+                                BrawlVelModify::None      => VelModify::None,
+                            };
+
+                            // TODO: Naively applying the animation velocity to the run subaction goes way to fast.
+                            // This is a quick fix until I figure out whats going on.
+                            let x_vel_temp = if hl_subaction.name == "Run" { 0.0 } else { hl_frame.x_vel_temp };
+                            let y_vel_temp = if hl_subaction.name == "Run" { 0.0 } else { hl_frame.y_vel_temp };
+
                             let frame = ActionFrame {
                                 ecb,
                                 colbox_links,
                                 ledge_cancel,
                                 pass_through,
-                                colboxes: ContextVec::from_vec(colboxes),
-                                render_order: render_order.iter().map(|x| x.0.clone()).collect(),
-                                ledge_grab_box: ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
-                                item_hold_x: 4.0,
-                                item_hold_y: 11.0,
-                                grab_hold_x: 4.0,
-                                grab_hold_y: 11.0,
-                                // TODO: The offset returned by apply_chr0_to_bones doesnt seem to change, figure out why
-                                //set_x_vel: hl_frame.animation_velocity.map(|vel| vel.z),
-                                //set_y_vel: hl_frame.animation_velocity.map(|vel| vel.y),
-                                set_x_vel: None,
-                                set_y_vel: None,
-                                use_platform_angle: hl_frame.slope_contour_full.is_some(),
+                                x_vel_modify,
+                                y_vel_modify,
+                                x_vel_temp,
+                                y_vel_temp,
+                                colboxes:            ContextVec::from_vec(colboxes),
+                                render_order:        render_order.iter().map(|x| x.0.clone()).collect(),
+                                ledge_grab_box:      ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
+                                item_hold_x:         4.0,
+                                item_hold_y:         11.0,
+                                grab_hold_x:         4.0,
+                                grab_hold_y:         11.0,
+                                use_platform_angle:  hl_frame.slope_contour_full.is_some(),
                                 force_hitlist_reset: hl_frame.hitlist_reset
                             };
 

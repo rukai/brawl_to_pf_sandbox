@@ -1,5 +1,5 @@
 use pf_sandbox_lib::fighter::Action;
-use enum_traits::ToIndex;
+use num_traits::ToPrimitive;
 
 pub fn action_name_to_indexes(name: &str) -> Vec<usize> {
     match name {
@@ -335,5 +335,5 @@ pub fn action_name_to_indexes(name: &str) -> Vec<usize> {
             //println!("unmatched: {}", name); // TODO
             vec!()
         }
-    }.iter().map(|x| x.index() as usize).collect()
+    }.iter().map(|x| x.to_usize().unwrap()).collect()
 }
