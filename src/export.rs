@@ -197,6 +197,10 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             for hit_box in hl_frame.hit_boxes {
                                 let role = match hit_box.next_values {
                                     CollisionBoxValues::Hit(values) => {
+                                        if !values.enabled || !values.can_hit_fighter() {
+                                            continue;
+                                        }
+
                                         let enable_reverse_hit = if let AngleFlip::AwayFromAttacker = values.angle_flipping { true } else { false };
                                         let angle = if let AngleFlip::AttackerDirReverse = values.angle_flipping { 180 - values.trajectory } else { values.trajectory } as f32;
                                         CollisionBoxRole::Hit (HitBox {
