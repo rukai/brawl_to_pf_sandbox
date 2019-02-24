@@ -6,6 +6,7 @@ use pf_sandbox_lib::stage::Stage;
 use treeflection::context_vec::ContextVec;
 use brawllib_rs::high_level_fighter::{HighLevelFighter, CollisionBoxValues};
 use brawllib_rs::fighter::Fighter as BrawlFighter;
+use brawllib_rs::fighter::ModType;
 use brawllib_rs::script_ast::{EdgeSlide, AngleFlip, HurtBoxState};
 use brawllib_rs::script_runner::VelModify as BrawlVelModify;
 use noisy_float::prelude::*;
@@ -42,7 +43,15 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
             package.stages.push(String::from("Stage"), Stage::default());
 
             for brawl_fighter in brawl_fighters {
-                if export_fighters.contains(&brawl_fighter.cased_name.to_lowercase()) || export_fighters.contains(&String::from("all")) {
+                // Filter unmodified fighters from mods, so that deleted fighters from mods don't show up as brawl fighters
+                let unmodified_fighter_in_mod = match brawl_fighter.mod_type {
+                    ModType::NotMod         => true,
+                    ModType::ModFromBase    => false,
+                    ModType::ModFromScratch => false,
+                } && mod_path.is_some();
+
+                let lower_fighter_name = brawl_fighter.cased_name.to_lowercase();
+                if export_fighters.contains(&lower_fighter_name) || export_fighters.contains(&String::from("all")) && lower_fighter_name != "poketrainer" && !unmodified_fighter_in_mod {
                     let hl_fighter = HighLevelFighter::new(&brawl_fighter);
                     info!("starting export fighter: {}", brawl_fighter.cased_name);
                     let mut fighter = Fighter::default();
@@ -131,6 +140,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                     // The PF Sandbox action is equivalent to the Brawl subaction
                     for hl_subaction in hl_fighter.subactions {
                         let mut frames = ContextVec::new();
+                        let mut initial_hit = true;
                         for hl_frame in hl_subaction.frames {
                             // https://smashboards.com/threads/all-aboard-the-pain-train-hurtboxes.301220/
                             // Hurtboxes like hitboxes have a reference to a single bone that determines its position + an offset vector.
@@ -314,6 +324,13 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                             let x_vel_temp = if hl_subaction.name == "Run" { 0.0 } else { hl_frame.x_vel_temp };
                             let y_vel_temp = if hl_subaction.name == "Run" { 0.0 } else { hl_frame.y_vel_temp };
 
+                            // Need to skip the first hit
+                            let any_rehit = hl_frame.hitbox_sets_rehit.iter().any(|x| *x);
+                            let force_hitlist_reset = any_rehit && !initial_hit;
+                            if any_rehit {
+                                initial_hit = false;
+                            }
+
                             let frame = ActionFrame {
                                 ecb,
                                 colbox_links,
@@ -323,6 +340,7 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 y_vel_modify,
                                 x_vel_temp,
                                 y_vel_temp,
+                                force_hitlist_reset,
                                 colboxes:            ContextVec::from_vec(colboxes),
                                 render_order:        render_order.iter().map(|x| x.0.clone()).collect(),
                                 ledge_grab_box:      ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
@@ -331,7 +349,6 @@ pub(crate) fn export(mod_path: Option<String>, export_fighters: &[String]) {
                                 grab_hold_x:         4.0,
                                 grab_hold_y:         11.0,
                                 use_platform_angle:  hl_frame.slope_contour_full.is_some(),
-                                force_hitlist_reset: hl_frame.hitlist_reset
                             };
 
                             frames.push(frame);
