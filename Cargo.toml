@@ -5,7 +5,7 @@ authors = ["Rukai <rubickent@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-brawllib_rs = "0.12"
+brawllib_rs = "0.14"
 pf_sandbox_lib = "0.3"
 cgmath = "0.17"
 ref_slice = "1"
