@@ -20,7 +20,7 @@ use crate::action_map::action_name_to_indexes;
 /// Not always correct, but assumes that psa modded characters are from PM
 pub(crate) fn export(mod_dir: Option<String>, export_fighters: &[String]) {
     let mod_path = if let &Some(ref mod_dir) = &mod_dir {
-        Some(PathBuf::from("data").join(mod_dir).join("fighter"))
+        Some(PathBuf::from("data").join(mod_dir))
     } else {
         None
     };
