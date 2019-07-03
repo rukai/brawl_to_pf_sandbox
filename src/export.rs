@@ -126,17 +126,6 @@ pub(crate) fn export(mod_dir: Option<String>, export_fighters: &[String]) {
             fighter.tilt_turn_flip_dir_frame = attributes.flip_dir_frame as u64;
             fighter.tilt_turn_into_dash_iasa = attributes.flip_dir_frame as u64;
 
-            let ledge_grab_box = if let Some(ledge_grab) = hl_fighter.ledge_grabs.get(0) {
-                Some(LedgeGrabBox {
-                    x1: ledge_grab.x,
-                    y1: ledge_grab.y,
-                    x2: ledge_grab.x + ledge_grab.width,
-                    y2: ledge_grab.y + ledge_grab.height,
-                })
-            } else {
-                None
-            };
-
             // create fighter actions
             // The PF Sandbox action is equivalent to the Brawl subaction
             for hl_subaction in hl_fighter.subactions {
@@ -332,6 +321,15 @@ pub(crate) fn export(mod_dir: Option<String>, export_fighters: &[String]) {
                         initial_hit = false;
                     }
 
+                    let ledge_grab_box = hl_frame.ledge_grab_box.map(|ledge_grab| {
+                        LedgeGrabBox {
+                            x1: ledge_grab.left,
+                            y1: ledge_grab.up,
+                            x2: ledge_grab.right,
+                            y2: ledge_grab.down
+                        }
+                    });
+
                     let frame = ActionFrame {
                         ecb,
                         colbox_links,
@@ -344,7 +342,7 @@ pub(crate) fn export(mod_dir: Option<String>, export_fighters: &[String]) {
                         force_hitlist_reset,
                         colboxes:            ContextVec::from_vec(colboxes),
                         render_order:        render_order.iter().map(|x| x.0.clone()).collect(),
-                        ledge_grab_box:      ledge_grab_box.clone(), // TODO: Only some frames have ledge_grab_boxes, they can also have different ledge_grab_box values. This should probably be handled by brawllib_rs
+                        ledge_grab_box:      ledge_grab_box.clone(),
                         item_hold_x:         4.0,
                         item_hold_y:         11.0,
                         grab_hold_x:         4.0,

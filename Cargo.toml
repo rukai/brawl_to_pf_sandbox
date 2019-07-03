@@ -5,7 +5,8 @@ authors = ["Rukai <rubickent@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-brawllib_rs = "0.16"
+#brawllib_rs = "0.16"
+brawllib_rs = { git = "https://github.com/rukai/brawllib_rs", rev = "df57a62e79c2f59b3a57ad883209802427a8edef" }
 pf_sandbox_lib = "0.3"
 cgmath = "0.17"
 ref_slice = "1"
